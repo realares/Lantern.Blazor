@@ -84,6 +84,39 @@ public sealed class PhotinoBlazorAppBuilderTests
     }
 
     [TestMethod]
+    [DataRow("https://app.local/")]
+    [DataRow("http://localhost/")]
+    [DataRow("file:///C:/app/")]
+    [DataRow("app://localhost/sub")]
+    [DataRow("app://localhost/?query=1")]
+    [DataRow("app://localhost/#fragment")]
+    public void ConfigureBlazor_ThrowsWhenAppBaseUriIsNotUsable(string appBaseUri)
+    {
+        var builder = PhotinoBlazorApp.CreateBuilder(useDefaults: false);
+
+        builder.ConfigureBlazor(options => options.AppBaseUri = new Uri(appBaseUri));
+
+        using var services = builder.Services.BuildServiceProvider();
+
+        Assert.ThrowsExactly<OptionsValidationException>(() =>
+            _ = services.GetRequiredService<IOptions<PhotinoBlazorOptions>>().Value);
+    }
+
+    [TestMethod]
+    [DataRow("app://localhost/")]
+    [DataRow("custom://host/sub/")]
+    public void ConfigureBlazor_AcceptsCustomSchemeBaseUri(string appBaseUri)
+    {
+        var builder = PhotinoBlazorApp.CreateBuilder(useDefaults: false);
+
+        builder.ConfigureBlazor(options => options.AppBaseUri = new Uri(appBaseUri));
+
+        using var services = builder.Services.BuildServiceProvider();
+
+        Assert.AreEqual(new Uri(appBaseUri), services.GetRequiredService<IOptions<PhotinoBlazorOptions>>().Value.AppBaseUri);
+    }
+
+    [TestMethod]
     public void Build_ThrowsWhenRootComponentsAreEmpty()
     {
         var builder = PhotinoBlazorApp.CreateBuilder(useDefaults: false);

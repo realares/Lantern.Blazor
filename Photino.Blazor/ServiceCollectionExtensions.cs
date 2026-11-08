@@ -23,6 +23,10 @@ internal static class ServiceCollectionExtensions
             .AddOptions<PhotinoBlazorOptions>()
             .BindConfiguration("PhotinoX:Blazor")
             .Validate(options => options.AppBaseUri is { IsAbsoluteUri: true }, $"{nameof(PhotinoBlazorOptions.AppBaseUri)} must be an absolute URI.")
+            .Validate(options => options.AppBaseUri is not { IsAbsoluteUri: true } || IsCustomScheme(options.AppBaseUri),
+                $"{nameof(PhotinoBlazorOptions.AppBaseUri)} must use a custom scheme; http, https and file cannot be registered as WebView scheme handlers.")
+            .Validate(options => options.AppBaseUri is not { IsAbsoluteUri: true } || IsBaseUri(options.AppBaseUri),
+                $"{nameof(PhotinoBlazorOptions.AppBaseUri)} must end with '/' and must not contain a query or fragment.")
             .Validate(options => !string.IsNullOrWhiteSpace(options.HostPage), $"{nameof(PhotinoBlazorOptions.HostPage)} must not be empty.")
             .ValidateOnStart();
 
@@ -49,5 +53,22 @@ internal static class ServiceCollectionExtensions
             .AddBlazorWebView();
 
         return services;
+    }
+
+    // PhotinoWindow.RegisterCustomSchemeHandler rejects these schemes.
+    private static bool IsCustomScheme(Uri uri)
+    {
+        return uri.Scheme != Uri.UriSchemeHttp
+            && uri.Scheme != Uri.UriSchemeHttps
+            && uri.Scheme != Uri.UriSchemeFile;
+    }
+
+    // Without a trailing slash, Uri.IsBaseOf treats sibling paths (app://localhost/other for
+    // app://localhost/app) as part of the application.
+    private static bool IsBaseUri(Uri uri)
+    {
+        return uri.AbsolutePath.EndsWith('/')
+            && string.IsNullOrEmpty(uri.Query)
+            && string.IsNullOrEmpty(uri.Fragment);
     }
 }

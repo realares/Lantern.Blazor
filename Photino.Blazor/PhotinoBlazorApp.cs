@@ -168,20 +168,31 @@ public sealed partial class PhotinoBlazorApp : IDisposable, IAsyncDisposable
         var options = Services.GetRequiredService<IOptions<PhotinoBlazorOptions>>();
 
         var windowServices = new PhotinoWindowServiceProvider(Services, resourceHandler);
+        PhotinoWebViewManager? webViewManager = null;
+        PhotinoBlazorWindow? blazorWindow = null;
 
-        var webViewManager = new PhotinoWebViewManager(
-            window,
-            windowServices,
-            dispatcher,
-            windowServices.GetRequiredService<IFileProvider>(),
-            rootComponents.JSComponents,
-            options);
+        try
+        {
+            webViewManager = new PhotinoWebViewManager(
+                window,
+                windowServices,
+                dispatcher,
+                windowServices.GetRequiredService<IFileProvider>(),
+                rootComponents.JSComponents,
+                options);
 
-        var blazorWindow = new PhotinoBlazorWindow(window, webViewManager, rootComponents, windowServices, options.Value);
+            blazorWindow = new PhotinoBlazorWindow(window, webViewManager, rootComponents, windowServices, options.Value);
 
-        resourceHandler.Handler = blazorWindow;
+            resourceHandler.Handler = blazorWindow;
 
-        window.RegisterCustomSchemeHandler(options.Value.AppBaseUri.Scheme, blazorWindow.HandleWebRequest);
+            window.RegisterCustomSchemeHandler(options.Value.AppBaseUri.Scheme, blazorWindow.HandleWebRequest);
+        }
+        catch
+        {
+            // The window is not tracked yet, so release its service scope and message pumps here.
+            CleanUpFailedWindow(window, blazorWindow, webViewManager, windowServices);
+            throw;
+        }
 
         bool disposeWindow;
 
@@ -216,6 +227,35 @@ public sealed partial class PhotinoBlazorApp : IDisposable, IAsyncDisposable
         });
 
         return blazorWindow;
+    }
+
+    private static void CleanUpFailedWindow(
+        PhotinoWindow window,
+        PhotinoBlazorWindow? blazorWindow,
+        PhotinoWebViewManager? webViewManager,
+        PhotinoWindowServiceProvider windowServices)
+    {
+        try
+        {
+            if (blazorWindow is not null)
+            {
+                blazorWindow.DisposeAsyncCore().GetAwaiter().GetResult();
+                return;
+            }
+
+            try
+            {
+                webViewManager?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            }
+            finally
+            {
+                windowServices.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            }
+        }
+        catch (Exception ex)
+        {
+            window.Log($"Error cleaning up after failed Photino Blazor window creation: {ex}");
+        }
     }
 
     private void OnWindowDisposed(PhotinoBlazorWindow window, Task disposeTask)

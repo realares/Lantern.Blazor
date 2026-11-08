@@ -251,7 +251,7 @@ With defaults enabled, options can also be configured through the `PhotinoX:Blaz
 }
 ```
 
-`AppBaseUri` must be an absolute URI, and `HostPage` must not be empty.
+`AppBaseUri` must be an absolute URI with a custom scheme (not `http`, `https`, or `file`), must end with `/`, and must not contain a query or fragment. `HostPage` must not be empty.
 
 ## Static web resources
 
