@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System.Collections.Specialized;
+using System.Diagnostics;
 using Microsoft.AspNetCore.Components;
 using Photino.NET;
 
@@ -11,8 +12,10 @@ public sealed partial class PhotinoBlazorWindow : IPhotinoWebResourceHandler, IP
 {
     private readonly PhotinoWindowServiceProvider _services;
     private readonly HashSet<string> _externalUriSchemes;
+    // Selectors of root components attached to the WebView manager; accessed on the Blazor dispatcher only.
+    private readonly HashSet<string> _attachedSelectors = new(StringComparer.Ordinal);
     private bool _isStarted;
-    private bool _areRootComponentsAttached;
+    private bool _isTrackingRootComponents;
     private int _disposed;
     private Task? _disposeTask;
     private Uri? _pendingStartUri;
@@ -46,8 +49,13 @@ public sealed partial class PhotinoBlazorWindow : IPhotinoWebResourceHandler, IP
     public PhotinoWindow Window { get; }
 
     /// <summary>
-    /// Gets the root components configured for this window. Root components should be configured before <see cref="Show"/> is called.
+    /// Gets the root components configured for this window.
     /// </summary>
+    /// <remarks>
+    /// Components added or removed after the window has started are attached to or removed from the running page.
+    /// Adding an invalid component after the window has started throws <see cref="InvalidOperationException"/>;
+    /// the component remains in the collection but is not attached.
+    /// </remarks>
     public RootComponentsCollection RootComponents { get; }
 
     internal PhotinoWebViewManager WebViewManager { get; }
@@ -172,6 +180,7 @@ public sealed partial class PhotinoBlazorWindow : IPhotinoWebResourceHandler, IP
                 ThrowRootComponentsNotConfigured();
 
             AttachRootComponentsAsync().GetAwaiter().GetResult();
+            TrackRootComponentChanges();
 
             // WebViewManager.Navigate resolves the start URL against the application base URI.
             Volatile.Write(ref _pendingStartUri, new Uri(WebViewManager.AppOriginUri, Window.StartUrl));
@@ -259,6 +268,7 @@ public sealed partial class PhotinoBlazorWindow : IPhotinoWebResourceHandler, IP
         {
             Window.NavigationStarting -= OnNavigationStarting;
             Window.NewWindowRequested -= OnNewWindowRequested;
+            RootComponents.CollectionChanged -= OnRootComponentsChanged;
 
             try
             {
@@ -277,31 +287,94 @@ public sealed partial class PhotinoBlazorWindow : IPhotinoWebResourceHandler, IP
         }
     }
 
-    private async Task AttachRootComponentsAsync()
+    private Task AttachRootComponentsAsync()
     {
-        if (_areRootComponentsAttached)
+        // Validate everything before attaching anything, so an invalid entry cannot leave
+        // the window with only some of its components attached.
+        var components = RootComponents.ToArray();
+        var selectors = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var component in components)
+        {
+            component.Validate();
+
+            if (!selectors.Add(component.Selector))
+                ThrowDuplicateSelector(component.Selector);
+        }
+
+        return WebViewManager.Dispatcher.InvokeAsync(async () =>
+        {
+            // Components attached by an earlier, failed Start() are skipped.
+            foreach (var component in components)
+            {
+                if (!_attachedSelectors.Contains(component.Selector))
+                    await AttachRootComponentAsync(component);
+            }
+        });
+    }
+
+    // Runs on the Blazor dispatcher, which also serializes access to _attachedSelectors.
+    private async Task AttachRootComponentAsync(RootComponent component)
+    {
+        if (_attachedSelectors.Contains(component.Selector))
+            ThrowDuplicateSelector(component.Selector);
+
+        var parameters = component.Parameters is null
+            ? ParameterView.Empty
+            : ParameterView.FromDictionary(component.Parameters);
+
+        await WebViewManager.AddRootComponentAsync(component.ComponentType, component.Selector, parameters);
+        _attachedSelectors.Add(component.Selector);
+    }
+
+    private void TrackRootComponentChanges()
+    {
+        if (_isTrackingRootComponents)
             return;
 
+        _isTrackingRootComponents = true;
+        RootComponents.CollectionChanged += OnRootComponentsChanged;
+    }
+
+    // Applies changes made after Start() to the running page.
+    private void OnRootComponentsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (Volatile.Read(ref _disposed) != 0 || e.Action == NotifyCollectionChangedAction.Move)
+            return;
+
+        var added = e.NewItems?.Cast<RootComponent>().ToArray() ?? [];
+
+        // Report invalid components to the code that modified the collection.
+        foreach (var component in added)
+            component.Validate();
+
+        var removed = e.Action == NotifyCollectionChangedAction.Reset
+            ? null
+            : e.OldItems?.Cast<RootComponent>().Select(component => component.Selector).ToArray() ?? [];
+
+        _ = UpdateRootComponentsAsync(removed, added);
+    }
+
+    // removedSelectors == null removes every attached component (collection reset).
+    private async Task UpdateRootComponentsAsync(string[]? removedSelectors, RootComponent[] added)
+    {
         try
         {
-            foreach (var component in RootComponents)
+            await WebViewManager.Dispatcher.InvokeAsync(async () =>
             {
-                component.Validate();
+                foreach (var selector in removedSelectors ?? [.. _attachedSelectors])
+                {
+                    if (_attachedSelectors.Remove(selector))
+                        await WebViewManager.RemoveRootComponentAsync(selector);
+                }
 
-                var parameters = component.Parameters is null
-                    ? ParameterView.Empty
-                    : ParameterView.FromDictionary(component.Parameters);
-
-                await WebViewManager.Dispatcher.InvokeAsync(() =>
-                    WebViewManager.AddRootComponentAsync(component.ComponentType, component.Selector, parameters));
-            }
-
-            _areRootComponentsAttached = true;
+                foreach (var component in added)
+                    await AttachRootComponentAsync(component);
+            });
         }
-        catch
+        catch (Exception ex)
         {
-            _areRootComponentsAttached = false;
-            throw;
+            Window.Log($"Error updating root components: {ex}");
         }
     }
 }

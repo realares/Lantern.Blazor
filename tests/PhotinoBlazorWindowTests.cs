@@ -151,6 +151,78 @@ public sealed class PhotinoBlazorWindowTests
     }
 
     [TestMethod]
+    public void Start_InvalidComponentDoesNotPreventRetry()
+    {
+        var window = s_app.CreateWindow<TestComponent>("app");
+        var invalid = new RootComponent { Selector = "#invalid" };
+        window.RootComponents.Add(invalid);
+
+        Assert.ThrowsExactly<InvalidOperationException>(window.Start);
+
+        window.RootComponents.Remove(invalid);
+        window.Start();
+
+        Assert.IsTrue(IsAttached(window, "app"));
+    }
+
+    [TestMethod]
+    public void Start_ThrowsForDuplicateSelectors()
+    {
+        var window = s_app.CreateWindow<TestComponent>("app");
+        window.RootComponents.Add<TestComponent>("app");
+
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(window.Start);
+
+        StringAssert.Contains(exception.Message, "'app'");
+    }
+
+    [TestMethod]
+    public void RootComponents_ChangesAfterStartAreAppliedToWindow()
+    {
+        var window = s_app.CreateWindow<TestComponent>("app");
+        window.Start();
+
+        window.RootComponents.Add<TestComponent>("#footer");
+        Assert.IsTrue(IsAttached(window, "#footer"));
+
+        window.RootComponents.RemoveAt(window.RootComponents.Count - 1);
+        Assert.IsFalse(IsAttached(window, "#footer"));
+
+        window.RootComponents.Clear();
+        Assert.IsFalse(IsAttached(window, "app"));
+    }
+
+    [TestMethod]
+    public void RootComponents_InvalidComponentAddedAfterStartThrows()
+    {
+        var window = s_app.CreateWindow<TestComponent>("app");
+        window.Start();
+
+        Assert.ThrowsExactly<InvalidOperationException>(() => window.RootComponents.Add(new RootComponent { Selector = "#x" }));
+    }
+
+    // WebViewManager rejects a second root component with the same selector, which reveals whether
+    // the selector is currently attached. The probe component is removed again.
+    private static bool IsAttached(PhotinoBlazorWindow window, string selector)
+    {
+        var manager = window.WebViewManager;
+
+        try
+        {
+            manager.Dispatcher.InvokeAsync(() =>
+                    manager.AddRootComponentAsync(typeof(TestComponent), selector, ParameterView.Empty))
+                .GetAwaiter().GetResult();
+        }
+        catch (InvalidOperationException)
+        {
+            return true;
+        }
+
+        manager.Dispatcher.InvokeAsync(() => manager.RemoveRootComponentAsync(selector)).GetAwaiter().GetResult();
+        return false;
+    }
+
+    [TestMethod]
     public void HandleWebRequest_ExtensionlessPathFallsBackToHostPage()
     {
         using var content = s_app.MainBlazorWindow.HandleWebRequest("app://localhost/settings", out var contentType);

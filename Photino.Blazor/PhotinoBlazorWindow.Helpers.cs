@@ -17,4 +17,11 @@ partial class PhotinoBlazorWindow
     {
         throw new InvalidOperationException("At least one root component must be configured before starting the Blazor content.");
     }
+
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ThrowDuplicateSelector(string selector)
+    {
+        throw new InvalidOperationException($"More than one root component uses the selector '{selector}'.");
+    }
 }
