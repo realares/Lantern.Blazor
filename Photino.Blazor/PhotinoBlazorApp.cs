@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.Configuration;
@@ -21,9 +22,11 @@ public sealed partial class PhotinoBlazorApp : IDisposable, IAsyncDisposable
         public const int Disposed = 2;
     }
 
+    // Windows that have not finished disposing.
     private readonly List<PhotinoBlazorWindow> _blazorWindows = [];
-    private readonly List<Task> _windowDisposeTasks = [];
     private PhotinoBlazorWindow? _mainBlazorWindow;
+    private Action<PhotinoBlazorApp>? _beforeDispose;
+    private int _beforeDisposeStarted;
     private int _isRunning;
     private int _state;
     private int _windowsDisposed;
@@ -192,28 +195,36 @@ public sealed partial class PhotinoBlazorApp : IDisposable, IAsyncDisposable
 
         if (disposeWindow)
         {
-            blazorWindow.DisposeAsyncCore().AsTask().GetAwaiter().GetResult();
+            blazorWindow.DisposeAsyncCore().GetAwaiter().GetResult();
             ThrowApplicationDisposed();
         }
 
         window.RegisterClosedHandler((_, _) =>
         {
-            Task disposeTask;
-            lock (_blazorWindows)
-            {
-                _blazorWindows.Remove(blazorWindow);
-                disposeTask = blazorWindow.DisposeAsyncCore().AsTask();
-                _windowDisposeTasks.Add(disposeTask);
-            }
-
-            _ = disposeTask.ContinueWith(
-                task => blazorWindow.Window.Log($"Error disposing Photino Blazor window: {task.Exception}"),
+            // Disposal runs component code and may wait for the dispatcher thread, so it is started outside
+            // any lock. The window stays tracked until disposal completes, so DisposeWindowsAsync can await it.
+            _ = blazorWindow.DisposeAsyncCore().ContinueWith(
+                static (task, state) =>
+                {
+                    var (app, closedWindow) = ((PhotinoBlazorApp, PhotinoBlazorWindow))state!;
+                    app.OnWindowDisposed(closedWindow, task);
+                },
+                (this, blazorWindow),
                 CancellationToken.None,
-                TaskContinuationOptions.OnlyOnFaulted,
+                TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default);
         });
 
         return blazorWindow;
+    }
+
+    private void OnWindowDisposed(PhotinoBlazorWindow window, Task disposeTask)
+    {
+        lock (_blazorWindows)
+            _blazorWindows.Remove(window);
+
+        if (disposeTask.IsFaulted)
+            window.Window.Log($"Error disposing Photino Blazor window: {disposeTask.Exception}");
     }
 
     /// <summary>
@@ -313,7 +324,21 @@ public sealed partial class PhotinoBlazorApp : IDisposable, IAsyncDisposable
 
         try
         {
+            // Run the callbacks and await the window disposal here; the application's before-dispose hook
+            // is synchronous and would otherwise block this call until every renderer is disposed.
+            ExceptionDispatchInfo? beforeDisposeException = null;
+
+            try
+            {
+                await RunBeforeDisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                beforeDisposeException = ExceptionDispatchInfo.Capture(ex);
+            }
+
             await _app.DisposeAsync().ConfigureAwait(false);
+            beforeDisposeException?.Throw();
         }
         finally
         {
@@ -321,37 +346,99 @@ public sealed partial class PhotinoBlazorApp : IDisposable, IAsyncDisposable
         }
     }
 
-    internal void DisposeWindows()
+    internal void SetBeforeDispose(Action<PhotinoBlazorApp>? callbacks)
     {
-        DisposeWindowsAsync().AsTask().GetAwaiter().GetResult();
+        _beforeDispose = callbacks;
     }
 
-    private async ValueTask DisposeWindowsAsync()
+    // Invoked by the application's before-dispose hook. Runs the callbacks and disposes the windows
+    // unless DisposeAsync already did.
+    internal void RunBeforeDispose()
     {
-        if (Interlocked.Exchange(ref _windowsDisposed, 1) != 0)
-            return;
-
-        Task[] windowDisposeTasks;
-
-        lock (_blazorWindows)
-        {
-            foreach (var window in _blazorWindows.ToArray())
-                _windowDisposeTasks.Add(window.DisposeAsyncCore().AsTask());
-
-            _blazorWindows.Clear();
-            windowDisposeTasks = [.. _windowDisposeTasks];
-        }
-
-        if (windowDisposeTasks.Length == 0)
+        if (!TryBeginBeforeDispose(out var callbacks))
             return;
 
         try
         {
-            await Task.WhenAll(windowDisposeTasks).ConfigureAwait(false);
+            callbacks?.Invoke(this);
         }
-        catch (Exception ex)
+        finally
         {
-            _mainBlazorWindow?.Window.Log($"Error disposing Photino Blazor windows: {ex}");
+            try
+            {
+                DisposeWindowsAsync().GetAwaiter().GetResult();
+            }
+            finally
+            {
+                MarkDisposed();
+            }
+        }
+    }
+
+    private async Task RunBeforeDisposeAsync()
+    {
+        if (!TryBeginBeforeDispose(out var callbacks))
+            return;
+
+        try
+        {
+            callbacks?.Invoke(this);
+        }
+        finally
+        {
+            try
+            {
+                await DisposeWindowsAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                MarkDisposed();
+            }
+        }
+    }
+
+    private bool TryBeginBeforeDispose(out Action<PhotinoBlazorApp>? callbacks)
+    {
+        if (Interlocked.Exchange(ref _beforeDisposeStarted, 1) != 0)
+        {
+            callbacks = null;
+            return false;
+        }
+
+        callbacks = Interlocked.Exchange(ref _beforeDispose, null);
+        return true;
+    }
+
+    private async Task DisposeWindowsAsync()
+    {
+        if (Interlocked.Exchange(ref _windowsDisposed, 1) != 0)
+            return;
+
+        PhotinoBlazorWindow[] windows;
+
+        lock (_blazorWindows)
+        {
+            windows = [.. _blazorWindows];
+            _blazorWindows.Clear();
+        }
+
+        if (windows.Length == 0)
+            return;
+
+        // Started outside the lock; windows that are already being disposed return their in-flight task.
+        var disposeTasks = new Task[windows.Length];
+        for (var i = 0; i < windows.Length; i++)
+            disposeTasks[i] = windows[i].DisposeAsyncCore();
+
+        var allDisposed = Task.WhenAll(disposeTasks);
+
+        try
+        {
+            await allDisposed.ConfigureAwait(false);
+        }
+        catch
+        {
+            _mainBlazorWindow?.Window.Log($"Error disposing Photino Blazor windows: {allDisposed.Exception}");
         }
     }
 

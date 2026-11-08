@@ -14,6 +14,7 @@ public sealed partial class PhotinoBlazorWindow : IPhotinoWebResourceHandler, IP
     private bool _isStarted;
     private bool _areRootComponentsAttached;
     private int _disposed;
+    private Task? _disposeTask;
     private bool _suppressNextUrlLoading;
 
     internal PhotinoBlazorWindow(
@@ -221,21 +222,46 @@ public sealed partial class PhotinoBlazorWindow : IPhotinoWebResourceHandler, IP
         return HandleWebRequest(url, out contentType);
     }
 
-    internal async ValueTask DisposeAsyncCore()
+    // Starts disposal on the first call and returns the same task to every caller, so callers can wait
+    // for a disposal that is already in progress. Must not be called while holding a lock: the synchronous
+    // part disposes the renderer, which runs component code and may wait for the dispatcher thread.
+    internal Task DisposeAsyncCore()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
-            return;
+        var disposeTask = Volatile.Read(ref _disposeTask);
+        if (disposeTask is not null)
+            return disposeTask;
 
-        Window.NavigationStarting -= OnNavigationStarting;
-        Window.NewWindowRequested -= OnNewWindowRequested;
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        disposeTask = Interlocked.CompareExchange(ref _disposeTask, completion.Task, null);
+        if (disposeTask is not null)
+            return disposeTask;
 
+        Volatile.Write(ref _disposed, 1);
+        _ = DisposeCoreAsync(completion);
+        return completion.Task;
+    }
+
+    private async Task DisposeCoreAsync(TaskCompletionSource completion)
+    {
         try
         {
-            await WebViewManager.DisposeAsync().ConfigureAwait(false);
+            Window.NavigationStarting -= OnNavigationStarting;
+            Window.NewWindowRequested -= OnNewWindowRequested;
+
+            try
+            {
+                await WebViewManager.DisposeAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                await _services.DisposeAsync().ConfigureAwait(false);
+            }
+
+            completion.SetResult();
         }
-        finally
+        catch (Exception ex)
         {
-            await _services.DisposeAsync().ConfigureAwait(false);
+            completion.SetException(ex);
         }
     }
 

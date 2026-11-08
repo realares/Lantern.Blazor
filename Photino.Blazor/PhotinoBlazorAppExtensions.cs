@@ -43,26 +43,10 @@ public static class PhotinoBlazorAppExtensions
             {
                 var state = app.Services.GetRequiredService<PhotinoBlazorAppState>();
                 var blazorApp = state.App;
-                try
-                {
-                    if (blazorApp is null)
-                        return;
+                state.App = null;
 
-                    try
-                    {
-                        state.BeforeDispose?.Invoke(blazorApp);
-                    }
-                    finally
-                    {
-                        blazorApp.DisposeWindows();
-                    }
-                }
-                finally
-                {
-                    blazorApp?.MarkDisposed();
-                    state.BeforeDispose = null;
-                    state.App = null;
-                }
+                // No-op when PhotinoBlazorApp.DisposeAsync already ran the callbacks and disposed the windows.
+                blazorApp?.RunBeforeDispose();
             });
             appBuilder.ConfigureApplication(application => application.ShutdownMode = PhotinoShutdownMode.OnMainWindowClose);
 

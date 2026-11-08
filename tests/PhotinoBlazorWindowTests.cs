@@ -21,7 +21,7 @@ public sealed class PhotinoBlazorWindowTests
     private static string s_webRoot = null!;
 
     [ClassInitialize]
-    public static void ClassInitialize(TestContext _)
+    public static void ClassInitialize(TestContext context)
     {
         s_webRoot = Directory.CreateTempSubdirectory("photinox-blazor-tests-").FullName;
         File.WriteAllText(Path.Combine(s_webRoot, "index.html"), HostPageContent);
@@ -29,17 +29,47 @@ public sealed class PhotinoBlazorWindowTests
 
         s_builder = PhotinoBlazorApp.CreateBuilder(useDefaults: false);
         s_builder.UseFileProvider(_ => new PhysicalFileProvider(s_webRoot));
+        _ = context;
         s_builder.RootComponents.Add<TestComponent>("app");
         s_builder.RootComponents.RegisterForJavaScript<TestComponent>("test-component");
+        s_builder.ConfigureBeforeDispose(app =>
+        {
+            Interlocked.Increment(ref s_beforeDisposeCount);
+            using var content = app.MainBlazorWindow.HandleWebRequest("app://localhost/data.json", out _);
+            s_beforeDisposeSawLiveWindow = content is not null;
+        });
 
         s_app = s_builder.Build();
     }
 
+    private static int s_beforeDisposeCount;
+    private static bool s_beforeDisposeSawLiveWindow;
+
     [ClassCleanup]
-    public static void ClassCleanup()
+    public static async Task ClassCleanup()
     {
-        s_app.Dispose();
+        var mainWindow = s_app.MainBlazorWindow;
+
+        await s_app.DisposeAsync().AsTask().WaitAsync(s_timeout);
         Directory.Delete(s_webRoot, recursive: true);
+
+        // DisposeAsync runs the callbacks once, while windows are still alive, and then disposes the windows.
+        Assert.AreEqual(1, s_beforeDisposeCount);
+        Assert.IsTrue(s_beforeDisposeSawLiveWindow);
+        Assert.IsNull(mainWindow.HandleWebRequest("app://localhost/data.json", out _));
+    }
+
+    [TestMethod]
+    public async Task DisposeAsyncCore_ReturnsSameTaskToConcurrentCallers()
+    {
+        var window = s_app.CreateWindow<TestComponent>("app");
+
+        var first = window.DisposeAsyncCore();
+        var second = window.DisposeAsyncCore();
+
+        Assert.AreSame(first, second);
+        await first.WaitAsync(s_timeout);
+        Assert.IsNull(window.HandleWebRequest("app://localhost/data.json", out _));
     }
 
     [TestMethod]

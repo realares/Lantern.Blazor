@@ -169,7 +169,7 @@ public sealed partial class PhotinoBlazorAppBuilder
 
             var state = app.Services.GetRequiredService<PhotinoBlazorAppState>();
             state.App = blazorApp;
-            state.BeforeDispose = _beforeDispose;
+            blazorApp.SetBeforeDispose(_beforeDispose);
 
             blazorApp.Initialize(RootComponents, _configureMainWindow);
             return blazorApp;
