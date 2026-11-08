@@ -136,6 +136,9 @@ public sealed partial class PhotinoBlazorApp : IDisposable, IAsyncDisposable
 
         var settings = Services.GetService<IOptions<PhotinoAppSettings>>()?.Value;
 
+        // Settings are applied without PhotinoEnvironment on purpose: the environment is only used to
+        // resolve StartUrl to a file path under WebRootPath, which would bypass the app:// scheme that
+        // serves the Blazor host page. Start() resolves StartUrl against AppBaseUri instead.
         if (parent is null)
         {
             window
