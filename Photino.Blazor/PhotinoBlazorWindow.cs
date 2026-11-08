@@ -10,6 +10,7 @@ namespace Photino.Blazor;
 public sealed partial class PhotinoBlazorWindow : IPhotinoWebResourceHandler
 {
     private readonly PhotinoWindowServiceProvider _services;
+    private readonly HashSet<string> _externalUriSchemes;
     private bool _isStarted;
     private bool _areRootComponentsAttached;
     private int _disposed;
@@ -19,17 +20,20 @@ public sealed partial class PhotinoBlazorWindow : IPhotinoWebResourceHandler
         PhotinoWindow window,
         PhotinoWebViewManager webViewManager,
         RootComponentsCollection rootComponents,
-        PhotinoWindowServiceProvider services)
+        PhotinoWindowServiceProvider services,
+        PhotinoBlazorOptions options)
     {
         ArgumentNullException.ThrowIfNull(window);
         ArgumentNullException.ThrowIfNull(webViewManager);
         ArgumentNullException.ThrowIfNull(rootComponents);
         ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(options);
 
         Window = window;
         WebViewManager = webViewManager;
         RootComponents = rootComponents;
         _services = services;
+        _externalUriSchemes = new HashSet<string>(options.ExternalUriSchemes, StringComparer.OrdinalIgnoreCase);
 
         Window.NavigationStarting += OnNavigationStarting;
         Window.NewWindowRequested += OnNewWindowRequested;
@@ -52,7 +56,8 @@ public sealed partial class PhotinoBlazorWindow : IPhotinoWebResourceHandler
     /// </summary>
     /// <remarks>
     /// Anchor tags with <c>target="_blank"</c> and JavaScript <c>window.open(...)</c>
-    /// are opened externally and do not raise this event.
+    /// are opened externally and do not raise this event; requests for application URLs are ignored.
+    /// URLs are only opened externally when their scheme is listed in <see cref="PhotinoBlazorOptions.ExternalUriSchemes"/>.
     /// </remarks>
     public event EventHandler<UrlLoadingEventArgs>? UrlLoading;
 
@@ -91,11 +96,31 @@ public sealed partial class PhotinoBlazorWindow : IPhotinoWebResourceHandler
 
     private void OnNewWindowRequested(object? sender, NewWindowRequestedEventArgs e)
     {
+        // Application URLs use a scheme that only this WebView can resolve, so the operating system cannot open them.
+        if (e.Uri.IsAbsoluteUri && WebViewManager.AppOriginUri.IsBaseOf(e.Uri))
+        {
+            Window.Log($"Ignored new window request for application URL: {e.Uri}.");
+            return;
+        }
+
         TryOpenExternally(e.Uri);
+    }
+
+    internal static bool IsAllowedExternalUri(Uri uri, IReadOnlySet<string> allowedSchemes)
+    {
+        return uri.IsAbsoluteUri && allowedSchemes.Contains(uri.Scheme);
     }
 
     private bool TryOpenExternally(Uri uri)
     {
+        // Shell execution runs whatever the OS associates with the URI (executables for file:, protocol handlers
+        // for custom schemes), so only explicitly allowed schemes may leave the WebView.
+        if (!IsAllowedExternalUri(uri, _externalUriSchemes))
+        {
+            Window.Log($"Refused to open URL externally because its scheme is not allowed: {uri}.");
+            return false;
+        }
+
         try
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri.AbsoluteUri)

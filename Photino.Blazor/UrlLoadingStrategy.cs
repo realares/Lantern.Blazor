@@ -11,6 +11,10 @@ public enum UrlLoadingStrategy
     /// <summary>
     /// Allows loading URLs using an app determined by the system.
     /// This is the default strategy for URLs with an external host.
+    /// <para>
+    /// Only URLs whose scheme is listed in <see cref="PhotinoBlazorOptions.ExternalUriSchemes"/> are opened;
+    /// other URLs are not loaded.
+    /// </para>
     /// </summary>
     OpenExternally,
 

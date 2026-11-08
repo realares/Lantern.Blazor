@@ -161,7 +161,7 @@ public sealed partial class PhotinoBlazorApp : IDisposable, IAsyncDisposable
             rootComponents.JSComponents,
             options);
 
-        var blazorWindow = new PhotinoBlazorWindow(window, webViewManager, rootComponents, windowServices);
+        var blazorWindow = new PhotinoBlazorWindow(window, webViewManager, rootComponents, windowServices, options.Value);
 
         resourceHandler.Handler = blazorWindow;
 

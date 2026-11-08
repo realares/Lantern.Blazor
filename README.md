@@ -522,8 +522,14 @@ Default behavior:
 
 - URLs within the application base URI load inside the WebView.
 - URLs outside the application base URI open through the operating system, typically in the default browser.
-- `target="_blank"` links and JavaScript `window.open(...)` requests open externally.
+- `target="_blank"` links and JavaScript `window.open(...)` requests open externally. Requests for application URLs are ignored.
 - Navigation can be canceled through `UrlLoadingStrategy.CancelLoad`.
+
+Only URLs whose scheme is listed in `PhotinoBlazorOptions.ExternalUriSchemes` (default: `http`, `https`, `mailto`) are handed to the operating system. Other schemes, such as `file:` or custom protocol handlers, are refused and logged, because the operating system would otherwise execute them on behalf of web content:
+
+```csharp
+builder.ConfigureBlazor(options => options.ExternalUriSchemes.Add("tel"));
+```
 
 Available strategies:
 
