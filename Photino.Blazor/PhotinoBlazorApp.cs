@@ -164,7 +164,7 @@ public sealed partial class PhotinoBlazorApp : IDisposable, IAsyncDisposable
         var resourceHandler = new PhotinoWindowResourceHandler();
         var options = Services.GetRequiredService<IOptions<PhotinoBlazorOptions>>();
 
-        var windowServices = new PhotinoWindowServiceProvider(Services, resourceHandler, options.Value.AppBaseUri);
+        var windowServices = new PhotinoWindowServiceProvider(Services, resourceHandler);
 
         var webViewManager = new PhotinoWebViewManager(
             window,

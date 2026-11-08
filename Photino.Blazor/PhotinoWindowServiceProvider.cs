@@ -2,52 +2,48 @@
 
 namespace Photino.Blazor;
 
+// Service provider of a Photino Blazor window. Every scope it creates is bound to the window through
+// PhotinoWindowContext, so scoped registrations such as HttpClient and IPhotinoWebResourceHandler
+// resolve the window's resources wherever they are injected.
 internal sealed class PhotinoWindowServiceProvider : IKeyedServiceProvider, IServiceScopeFactory, IServiceScope, IAsyncDisposable
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IServiceScope _scope;
     private readonly IPhotinoWebResourceHandler _resourceHandler;
-    private readonly Uri _appBaseUri;
-    private HttpClient? _httpClient;
 
-    internal PhotinoWindowServiceProvider(IServiceProvider rootServices, IPhotinoWebResourceHandler resourceHandler, Uri appBaseUri)
+    internal PhotinoWindowServiceProvider(IServiceProvider rootServices, IPhotinoWebResourceHandler resourceHandler)
+        : this(
+            (rootServices ?? throw new ArgumentNullException(nameof(rootServices))).GetRequiredService<IServiceScopeFactory>(),
+            resourceHandler)
     {
-        ArgumentNullException.ThrowIfNull(rootServices);
-        ArgumentNullException.ThrowIfNull(resourceHandler);
-        ArgumentNullException.ThrowIfNull(appBaseUri);
-
-        _scopeFactory = rootServices.GetRequiredService<IServiceScopeFactory>();
-        _scope = _scopeFactory.CreateScope();
-        _resourceHandler = resourceHandler;
-        _appBaseUri = appBaseUri;
     }
 
-    private PhotinoWindowServiceProvider(IServiceScopeFactory scopeFactory, IServiceScope scope, IPhotinoWebResourceHandler resourceHandler, Uri appBaseUri)
+    private PhotinoWindowServiceProvider(IServiceScopeFactory scopeFactory, IPhotinoWebResourceHandler resourceHandler)
     {
+        ArgumentNullException.ThrowIfNull(resourceHandler);
+
         _scopeFactory = scopeFactory;
-        _scope = scope;
         _resourceHandler = resourceHandler;
-        _appBaseUri = appBaseUri;
+        _scope = scopeFactory.CreateScope();
+
+        try
+        {
+            _scope.ServiceProvider.GetService<PhotinoWindowContext>()?.Bind(resourceHandler);
+        }
+        catch
+        {
+            _scope.Dispose();
+            throw;
+        }
     }
 
     public IServiceProvider ServiceProvider => this;
 
     public object? GetService(Type serviceType)
     {
-        if (serviceType == typeof(IServiceProvider))
+        // Nested scopes must be created through this provider so they are bound to the window as well.
+        if (serviceType == typeof(IServiceProvider) || serviceType == typeof(IServiceScopeFactory))
             return this;
-
-        if (serviceType == typeof(IServiceScopeFactory))
-            return this;
-
-        if (serviceType == typeof(IPhotinoWebResourceHandler))
-            return _resourceHandler;
-
-        if (serviceType == typeof(HttpClient))
-            return _httpClient ??= new HttpClient(new PhotinoHttpHandler(_resourceHandler))
-            {
-                BaseAddress = _appBaseUri
-            };
 
         return _scope.ServiceProvider.GetService(serviceType);
     }
@@ -78,19 +74,16 @@ internal sealed class PhotinoWindowServiceProvider : IKeyedServiceProvider, ISer
 
     public IServiceScope CreateScope()
     {
-        return new PhotinoWindowServiceProvider(_scopeFactory, _scopeFactory.CreateScope(), _resourceHandler, _appBaseUri);
+        return new PhotinoWindowServiceProvider(_scopeFactory, _resourceHandler);
     }
 
     public void Dispose()
     {
-        _httpClient?.Dispose();
         _scope.Dispose();
     }
 
     public async ValueTask DisposeAsync()
     {
-        _httpClient?.Dispose();
-
         if (_scope is IAsyncDisposable asyncDisposable)
             await asyncDisposable.DisposeAsync().ConfigureAwait(false);
         else

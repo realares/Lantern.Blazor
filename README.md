@@ -161,7 +161,7 @@ await using var app = builder.Build();
 var service = app.Services.GetRequiredService<MyService>();
 ```
 
-Each `PhotinoBlazorWindow` uses a child service scope. The window service provider also supplies a window-specific `HttpClient` and `IPhotinoWebResourceHandler`, while other scoped application services are resolved from that child scope.
+Each `PhotinoBlazorWindow` uses a child service scope. A window-specific `HttpClient` (based on `AppBaseUri`) and `IPhotinoWebResourceHandler` are registered as scoped services, so they can be injected into components and into application services resolved within the window. All window `HttpClient` instances share one connection pool for external requests. An `HttpClient` registration made by the application takes precedence.
 
 ### Custom service providers
 

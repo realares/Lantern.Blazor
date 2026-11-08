@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.FileProviders;
 using PhotinoX.App;
 
@@ -24,6 +25,20 @@ internal static class ServiceCollectionExtensions
             .Validate(options => options.AppBaseUri is { IsAbsoluteUri: true }, $"{nameof(PhotinoBlazorOptions.AppBaseUri)} must be an absolute URI.")
             .Validate(options => !string.IsNullOrWhiteSpace(options.HostPage), $"{nameof(PhotinoBlazorOptions.HostPage)} must not be empty.")
             .ValidateOnStart();
+
+        // Window-specific services are regular scoped registrations, so services constructed by the
+        // container (not only components) receive the window's HttpClient and resource handler.
+        services.TryAddScoped<PhotinoWindowContext>();
+        services.TryAddSingleton<PhotinoHttpMessageHandlerProvider>();
+        services.TryAddScoped(static serviceProvider =>
+            serviceProvider.GetRequiredService<PhotinoWindowContext>().ResourceHandler);
+        services.TryAddScoped(static serviceProvider =>
+        {
+            var context = serviceProvider.GetRequiredService<PhotinoWindowContext>();
+            return serviceProvider
+                .GetRequiredService<PhotinoHttpMessageHandlerProvider>()
+                .CreateClient(context.ResourceHandler, context.AppBaseUri);
+        });
 
         services
             .AddSingleton<IFileProvider>(serviceProvider =>
