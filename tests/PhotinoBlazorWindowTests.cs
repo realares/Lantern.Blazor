@@ -96,6 +96,42 @@ public sealed class PhotinoBlazorWindowTests
     }
 
     [TestMethod]
+    public void NavigationStarting_OnlySkipsUrlLoadingForStartUri()
+    {
+        var window = s_app.CreateWindow<TestComponent>("app");
+        var raised = new List<Uri>();
+        window.UrlLoading += (_, e) =>
+        {
+            raised.Add(e.Url);
+            e.UrlLoadingStrategy = UrlLoadingStrategy.CancelLoad;
+        };
+
+        window.Start();
+
+        // An unrelated navigation before the start navigation must still go through the policy.
+        Assert.IsTrue(RaiseNavigationStarting(window, "https://example.com/"));
+        Assert.IsFalse(RaiseNavigationStarting(window, "app://localhost/"));
+        Assert.IsTrue(RaiseNavigationStarting(window, "app://localhost/"));
+
+        CollectionAssert.AreEqual(
+            new[] { new Uri("https://example.com/"), new Uri("app://localhost/") },
+            raised);
+    }
+
+    // PhotinoWindow raises NavigationStarting from an internal method that the native layer calls.
+    // Returns whether the navigation was canceled.
+    private static bool RaiseNavigationStarting(PhotinoBlazorWindow window, string uri)
+    {
+        var method = typeof(Photino.NET.PhotinoWindow).GetMethod(
+            "OnNavigationStarting",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+            [typeof(string)]);
+
+        Assert.IsNotNull(method, "PhotinoWindow.OnNavigationStarting(string) was not found.");
+        return Convert.ToInt32(method.Invoke(window.Window, [uri])) != 0;
+    }
+
+    [TestMethod]
     public void HandleWebRequest_ExtensionlessPathFallsBackToHostPage()
     {
         using var content = s_app.MainBlazorWindow.HandleWebRequest("app://localhost/settings", out var contentType);

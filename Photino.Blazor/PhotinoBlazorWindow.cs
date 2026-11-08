@@ -15,7 +15,7 @@ public sealed partial class PhotinoBlazorWindow : IPhotinoWebResourceHandler, IP
     private bool _areRootComponentsAttached;
     private int _disposed;
     private Task? _disposeTask;
-    private bool _suppressNextUrlLoading;
+    private Uri? _pendingStartUri;
 
     internal PhotinoBlazorWindow(
         PhotinoWindow window,
@@ -64,9 +64,14 @@ public sealed partial class PhotinoBlazorWindow : IPhotinoWebResourceHandler, IP
 
     private void OnNavigationStarting(object? sender, NavigationStartingEventArgs e)
     {
-        if (_suppressNextUrlLoading)
+        // The start navigation is initiated by Start() itself and is not subject to the UrlLoading policy.
+        // Match it by URI rather than skipping "the next" event, so an unrelated first navigation
+        // (or a platform that raises no event for the start URL) cannot bypass the policy.
+        var pendingStartUri = Volatile.Read(ref _pendingStartUri);
+        if (pendingStartUri is not null
+            && IsSameNavigationTarget(pendingStartUri, e.Uri)
+            && Interlocked.CompareExchange(ref _pendingStartUri, null, pendingStartUri) == pendingStartUri)
         {
-            _suppressNextUrlLoading = false;
             return;
         }
 
@@ -93,6 +98,12 @@ public sealed partial class PhotinoBlazorWindow : IPhotinoWebResourceHandler, IP
                 Window.Log($"Unsupported URL loading strategy: {args.UrlLoadingStrategy}.");
                 break;
         }
+    }
+
+    private static bool IsSameNavigationTarget(Uri expected, Uri actual)
+    {
+        return actual.IsAbsoluteUri
+            && Uri.Compare(expected, actual, UriComponents.HttpRequestUrl, UriFormat.SafeUnescaped, StringComparison.Ordinal) == 0;
     }
 
     private void OnNewWindowRequested(object? sender, NewWindowRequestedEventArgs e)
@@ -162,7 +173,8 @@ public sealed partial class PhotinoBlazorWindow : IPhotinoWebResourceHandler, IP
 
             AttachRootComponentsAsync().GetAwaiter().GetResult();
 
-            _suppressNextUrlLoading = true;
+            // WebViewManager.Navigate resolves the start URL against the application base URI.
+            Volatile.Write(ref _pendingStartUri, new Uri(WebViewManager.AppOriginUri, Window.StartUrl));
             WebViewManager.Navigate(Window.StartUrl);
         }
         catch
