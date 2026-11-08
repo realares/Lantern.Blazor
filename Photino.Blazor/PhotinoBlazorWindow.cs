@@ -7,7 +7,7 @@ namespace Photino.Blazor;
 /// <summary>
 /// Represents a Photino window that hosts Blazor content.
 /// </summary>
-public sealed partial class PhotinoBlazorWindow : IPhotinoWebResourceHandler
+public sealed partial class PhotinoBlazorWindow : IPhotinoWebResourceHandler, IPhotinoResourceRequestHandler
 {
     private readonly PhotinoWindowServiceProvider _services;
     private readonly HashSet<string> _externalUriSchemes;
@@ -189,7 +189,20 @@ public sealed partial class PhotinoBlazorWindow : IPhotinoWebResourceHandler
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Requests for paths without a file extension are treated as navigations and fall back to the host page.
+    /// </remarks>
     public Stream? HandleWebRequest(string url, out string? contentType)
+    {
+        return HandleRequest(url, isResourceRequest: false, out contentType);
+    }
+
+    Stream? IPhotinoResourceRequestHandler.HandleResourceRequest(string url, out string? contentType)
+    {
+        return HandleRequest(url, isResourceRequest: true, out contentType);
+    }
+
+    private Stream? HandleRequest(string url, bool isResourceRequest, out string? contentType)
     {
         if (Volatile.Read(ref _disposed) != 0)
         {
@@ -197,7 +210,7 @@ public sealed partial class PhotinoBlazorWindow : IPhotinoWebResourceHandler
             return null;
         }
 
-        return WebViewManager.HandleWebRequestCore(url, out contentType);
+        return WebViewManager.HandleWebRequestCore(url, isResourceRequest, out contentType);
     }
 
     internal Stream? HandleWebRequest(object? sender, string scheme, string url, out string? contentType)

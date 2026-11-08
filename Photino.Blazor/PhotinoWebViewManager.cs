@@ -70,18 +70,20 @@ internal sealed partial class PhotinoWebViewManager : WebViewManager
 
     private bool AreMessagePumpsStopped => Volatile.Read(ref _messagePumpsStopped) != 0;
 
-    internal Stream? HandleWebRequestCore(string url, out string? contentType)
+    // isResourceRequest: the request comes from code (e.g. HttpClient); it is never answered with the
+    // host page, and missing files return null instead of the not-found body served to the WebView.
+    internal Stream? HandleWebRequestCore(string url, bool isResourceRequest, out string? contentType)
     {
-        // It would be better if we were told whether this is a navigation request, but
-        // since we're not, guess.
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
         {
             contentType = null;
             return null;
         }
 
+        // WebView requests do not tell whether they are navigations, so guess: paths without a
+        // file extension are treated as client-side routes and fall back to the host page.
         var localPath = uri.LocalPath;
-        var hasFileExtension = localPath.LastIndexOf('.') > localPath.LastIndexOf('/');
+        var allowFallbackOnHostPage = !isResourceRequest && localPath.LastIndexOf('.') <= localPath.LastIndexOf('/');
 
         // Remove query and fragment before attempting to retrieve the file.
         // For example:
@@ -90,9 +92,16 @@ internal sealed partial class PhotinoWebViewManager : WebViewManager
         url = uri.GetLeftPart(UriPartial.Path);
 
         if (url.StartsWith(AppOriginUri.ToString(), StringComparison.Ordinal)
-            && TryGetResponseContent(url, !hasFileExtension, out _, out _,
+            && TryGetResponseContent(url, allowFallbackOnHostPage, out var statusCode, out _,
                 out var content, out var headers))
         {
+            if (isResourceRequest && statusCode != 200)
+            {
+                content.Dispose();
+                contentType = null;
+                return null;
+            }
+
             headers.TryGetValue("Content-Type", out contentType);
             return content;
         }
