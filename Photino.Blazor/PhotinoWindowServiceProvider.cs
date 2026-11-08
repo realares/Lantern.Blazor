@@ -2,7 +2,7 @@
 
 namespace Photino.Blazor;
 
-internal sealed class PhotinoWindowServiceProvider : IServiceProvider, IServiceScopeFactory, IServiceScope, IAsyncDisposable
+internal sealed class PhotinoWindowServiceProvider : IKeyedServiceProvider, IServiceScopeFactory, IServiceScope, IAsyncDisposable
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IServiceScope _scope;
@@ -50,6 +50,30 @@ internal sealed class PhotinoWindowServiceProvider : IServiceProvider, IServiceS
             };
 
         return _scope.ServiceProvider.GetService(serviceType);
+    }
+
+    // Blazor resolves [Inject(Key = ...)] properties only through IKeyedServiceProvider,
+    // so keyed lookups must be forwarded to the wrapped scope.
+    public object? GetKeyedService(Type serviceType, object? serviceKey)
+    {
+        if (serviceKey is null)
+            return GetService(serviceType);
+
+        return GetKeyedServiceProvider().GetKeyedService(serviceType, serviceKey);
+    }
+
+    public object GetRequiredKeyedService(Type serviceType, object? serviceKey)
+    {
+        if (serviceKey is null)
+            return this.GetRequiredService(serviceType);
+
+        return GetKeyedServiceProvider().GetRequiredKeyedService(serviceType, serviceKey);
+    }
+
+    private IKeyedServiceProvider GetKeyedServiceProvider()
+    {
+        return _scope.ServiceProvider as IKeyedServiceProvider
+            ?? throw new InvalidOperationException("The application's service provider does not support keyed services.");
     }
 
     public IServiceScope CreateScope()
