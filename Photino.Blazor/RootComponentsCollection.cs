@@ -9,8 +9,22 @@ namespace Photino.Blazor;
 /// </summary>
 public sealed class RootComponentsCollection : ObservableCollection<RootComponent>, IJSComponentConfiguration
 {
+    /// <summary>
+    /// Initializes a new instance of the <see cref="RootComponentsCollection"/> class.
+    /// </summary>
+    public RootComponentsCollection()
+        : this(new JSComponentConfigurationStore())
+    {
+    }
+
+    internal RootComponentsCollection(JSComponentConfigurationStore jsComponents)
+    {
+        ArgumentNullException.ThrowIfNull(jsComponents);
+        JSComponents = jsComponents;
+    }
+
     /// <inheritdoc />
-    public JSComponentConfigurationStore JSComponents { get; } = new();
+    public JSComponentConfigurationStore JSComponents { get; }
 
     /// <summary>
     /// Adds a root component.

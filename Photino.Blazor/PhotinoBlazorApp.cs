@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
@@ -80,7 +81,13 @@ public sealed partial class PhotinoBlazorApp : IDisposable, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(rootComponents);
 
-        MainBlazorWindow = CreateWindowCore(parent: null, configurationName: null, configure: configureMainWindow);
+        // Share the builder's JS component store: registrations made through
+        // builder.RootComponents.RegisterForJavaScript(...) live only there.
+        MainBlazorWindow = CreateWindowCore(
+            parent: null,
+            configurationName: null,
+            configure: configureMainWindow,
+            jsComponents: rootComponents.JSComponents);
 
         foreach (var component in rootComponents)
         {
@@ -116,7 +123,11 @@ public sealed partial class PhotinoBlazorApp : IDisposable, IAsyncDisposable
         return CreateWindowCore(MainWindow, configurationName, configure);
     }
 
-    private PhotinoBlazorWindow CreateWindowCore(PhotinoWindow? parent, string? configurationName, Action<PhotinoWindow>? configure = null)
+    private PhotinoBlazorWindow CreateWindowCore(
+        PhotinoWindow? parent,
+        string? configurationName,
+        Action<PhotinoWindow>? configure = null,
+        JSComponentConfigurationStore? jsComponents = null)
     {
         var window = parent is null ? new PhotinoWindow() : new PhotinoWindow(parent);
 
@@ -143,7 +154,9 @@ public sealed partial class PhotinoBlazorApp : IDisposable, IAsyncDisposable
 
         configure?.Invoke(window);
 
-        var rootComponents = new RootComponentsCollection();
+        var rootComponents = jsComponents is null
+            ? new RootComponentsCollection()
+            : new RootComponentsCollection(jsComponents);
 
         var synchronizationContext = new PhotinoSynchronizationContext(Dispatcher);
         var dispatcher = new PhotinoBlazorDispatcher(synchronizationContext);
