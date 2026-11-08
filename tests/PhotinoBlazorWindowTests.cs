@@ -132,6 +132,25 @@ public sealed class PhotinoBlazorWindowTests
     }
 
     [TestMethod]
+    public async Task SendMessage_AfterWindowDisposed_ThrowsJSDisconnectedException()
+    {
+        var window = s_app.CreateWindow<TestComponent>("app");
+        await window.DisposeAsyncCore().WaitAsync(s_timeout);
+
+        // SendMessage is the protected transport hook that Blazor's JS interop and renderer call.
+        var sendMessage = typeof(PhotinoWebViewManager).GetMethod(
+            "SendMessage",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+            [typeof(string)]);
+        Assert.IsNotNull(sendMessage);
+
+        var exception = Assert.ThrowsExactly<System.Reflection.TargetInvocationException>(
+            () => sendMessage.Invoke(window.WebViewManager, ["__bwv:[]"]));
+
+        Assert.IsInstanceOfType<Microsoft.JSInterop.JSDisconnectedException>(exception.InnerException);
+    }
+
+    [TestMethod]
     public void HandleWebRequest_ExtensionlessPathFallsBackToHostPage()
     {
         using var content = s_app.MainBlazorWindow.HandleWebRequest("app://localhost/settings", out var contentType);

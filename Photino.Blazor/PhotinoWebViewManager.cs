@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebView;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Options;
+using Microsoft.JSInterop;
 using Photino.NET;
 
 namespace Photino.Blazor;
@@ -309,6 +310,10 @@ internal sealed partial class PhotinoWebViewManager : WebViewManager
 
     private bool IsExpectedWebViewShutdownException(Exception exception)
     {
+        // Raised by SendMessage once the transport is closed.
+        if (exception is JSDisconnectedException)
+            return true;
+
         if (exception is OperationCanceledException canceledException)
             return canceledException.CancellationToken == _cancellationToken;
 
