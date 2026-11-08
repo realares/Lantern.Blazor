@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Components;
+﻿using System.Diagnostics;
+using Microsoft.AspNetCore.Components;
 using Photino.NET;
 
 namespace Photino.Blazor;
@@ -123,6 +124,8 @@ public sealed partial class PhotinoBlazorWindow : IPhotinoWebResourceHandler
 
         _isStarted = true;
 
+        var wasInitialized = Window.IsInitialized;
+
         try
         {
             if (string.IsNullOrWhiteSpace(Window.StartUrl))
@@ -141,6 +144,10 @@ public sealed partial class PhotinoBlazorWindow : IPhotinoWebResourceHandler
             _isStarted = false;
             throw;
         }
+
+        // PhotinoApplication.Run must be able to create the native window itself (on an STA thread on Windows).
+        // A window the caller initialized before Start() is fine; Start() itself must never initialize it.
+        Debug.Assert(wasInitialized || !Window.IsInitialized, "Starting Blazor content must not initialize the native window.");
     }
 
     /// <summary>

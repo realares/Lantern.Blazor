@@ -29,7 +29,8 @@
 
   <ItemGroup>
     <EmbeddedResource Include="wwwroot\**" />
-    <EmbeddedResource Include="..\Common\bin\Release\$(TargetFramework)\publish\**" />
+    <!-- Common targets only net8.0; its published MudBlazor assets are the same for every target framework of this app. -->
+    <EmbeddedResource Include="..\Common\bin\Release\net8.0\publish\**" />
   </ItemGroup>
 
   <ItemGroup>
