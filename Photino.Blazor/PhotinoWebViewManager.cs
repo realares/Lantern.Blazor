@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using System.Runtime.ExceptionServices;
+﻿using System.Runtime.ExceptionServices;
 using System.Threading.Channels;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
@@ -63,7 +62,7 @@ internal sealed partial class PhotinoWebViewManager : WebViewManager
         _cancellationToken = _cts.Token;
 
         _outgoingMessagesTask = Task.Run(() => ProcessOutgoingMessagesAsync(_cancellationToken), _cancellationToken);
-        _incomingMessagesTask = Task.Run(() => ProcessIncomingMessagesAsync(_cancellationToken), _cancellationToken);
+        _incomingMessagesTask = Task.Run(ProcessIncomingMessagesAsync);
     }
 
     internal Uri AppOriginUri { get; }
@@ -181,35 +180,30 @@ internal sealed partial class PhotinoWebViewManager : WebViewManager
         }
     }
 
-    private async Task ProcessIncomingMessagesAsync(CancellationToken cancellationToken)
+    private async Task ProcessIncomingMessagesAsync()
     {
         var reader = _incomingMessages.Reader;
 
-        try
+        // No cancellation token: StopAcceptingMessages completes the channel, which ends this loop.
+        // Waiting with the token raced with shutdown, because a canceled token is observed before completion.
+        while (await reader.WaitToReadAsync().ConfigureAwait(false))
         {
-            while (await reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
+            while (reader.TryRead(out var message))
             {
-                while (reader.TryRead(out var message))
-                {
-                    if (AreMessagePumpsStopped)
-                        return;
+                if (AreMessagePumpsStopped)
+                    return;
 
-                    try
-                    {
-                        // The native layer provides the top-level WebView URI for the message.
-                        // This is used as the message source for Blazor WebView dispatching.
-                        MessageReceived(message.Uri, message.Message);
-                    }
-                    catch (Exception ex)
-                    {
-                        Log($"Error processing message from WebView: {ex}");
-                    }
+                try
+                {
+                    // The native layer provides the top-level WebView URI for the message.
+                    // This is used as the message source for Blazor WebView dispatching.
+                    MessageReceived(message.Uri, message.Message);
+                }
+                catch (Exception ex)
+                {
+                    Log($"Error processing message from WebView: {ex}");
                 }
             }
-        }
-        catch (OperationCanceledException)
-        {
-            Debug.Fail("Incoming WebView message pump was canceled before observing channel completion.");
         }
     }
 
