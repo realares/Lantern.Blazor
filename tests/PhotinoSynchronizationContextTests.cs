@@ -114,6 +114,55 @@ public sealed class PhotinoSynchronizationContextTests
     }
 
     [TestMethod]
+    public async Task Post_FlowsExecutionContextToDispatcherThread()
+    {
+        using var dispatcher = new TestUiDispatcher();
+        var context = new PhotinoSynchronizationContext(dispatcher);
+        var asyncLocal = new AsyncLocal<string?> { Value = "posted" };
+        var observed = new TaskCompletionSource<(string? Value, int ThreadId)>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        context.Post(_ => observed.SetResult((asyncLocal.Value, Environment.CurrentManagedThreadId)), null);
+
+        var (value, threadId) = await observed.Task.WaitAsync(s_timeout);
+        Assert.AreEqual("posted", value);
+        Assert.AreEqual(dispatcher.ThreadId, threadId);
+    }
+
+    [TestMethod]
+    public async Task InvokeAsync_FromBackgroundThread_FlowsExecutionContextToDispatcherThread()
+    {
+        using var dispatcher = new TestUiDispatcher();
+        var context = new PhotinoSynchronizationContext(dispatcher);
+
+        var (value, threadId) = await Task.Run(() =>
+        {
+            var asyncLocal = new AsyncLocal<string?> { Value = "invoked" };
+            return context.InvokeAsync(() => (asyncLocal.Value, Environment.CurrentManagedThreadId));
+        }).WaitAsync(s_timeout);
+
+        Assert.AreEqual("invoked", value);
+        Assert.AreEqual(dispatcher.ThreadId, threadId);
+    }
+
+    [TestMethod]
+    public async Task InvokeAsync_ContinuationAfterAwait_KeepsCulture()
+    {
+        using var dispatcher = new TestUiDispatcher();
+        var context = new PhotinoSynchronizationContext(dispatcher);
+        var culture = new System.Globalization.CultureInfo("de-DE");
+
+        var observed = await context.InvokeAsync(async () =>
+        {
+            System.Globalization.CultureInfo.CurrentCulture = culture;
+            await Task.Yield();
+            return (System.Globalization.CultureInfo.CurrentCulture.Name, Environment.CurrentManagedThreadId);
+        }).WaitAsync(s_timeout);
+
+        Assert.AreEqual("de-DE", observed.Name);
+        Assert.AreEqual(dispatcher.ThreadId, observed.CurrentManagedThreadId);
+    }
+
+    [TestMethod]
     public async Task InvokeAsync_SynchronouslyCompletedTask_Completes()
     {
         var context = new PhotinoSynchronizationContext(new PhotinoDispatcher());

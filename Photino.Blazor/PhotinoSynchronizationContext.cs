@@ -11,12 +11,15 @@ namespace Photino.Blazor;
 //
 // During pre-dispatch initialization, or after native dispatch has been disabled during shutdown,
 // work items are executed directly instead of going through the Photino dispatcher.
+//
+// The Photino dispatcher marshals natively and does not flow ExecutionContext, so the captured
+// context is applied on the thread that finally runs the callback.
 internal sealed class PhotinoSynchronizationContext : SynchronizationContext
 {
     private static readonly ContextCallback s_executionContextThunk = static state =>
     {
-        var item = (WorkItem)state!;
-        item.SynchronizationContext.ExecuteSynchronously(null, item.Callback, item.State);
+        var execution = (Execution)state!;
+        execution.Context.ExecuteCallback(execution.Completion, execution.Callback, execution.State);
     };
 
     private static readonly Action<Task, object?> s_backgroundWorkThunk = static (task, state) =>
@@ -25,14 +28,19 @@ internal sealed class PhotinoSynchronizationContext : SynchronizationContext
         item.SynchronizationContext.ExecuteBackground(item);
     };
 
-    private readonly PhotinoDispatcher _dispatcher;
+    private readonly IPhotinoUiDispatcher _dispatcher;
 
     internal PhotinoSynchronizationContext(PhotinoDispatcher dispatcher)
+        : this(new PhotinoUiDispatcher(dispatcher))
+    {
+    }
+
+    internal PhotinoSynchronizationContext(IPhotinoUiDispatcher dispatcher)
         : this(dispatcher, new State())
     {
     }
 
-    private PhotinoSynchronizationContext(PhotinoDispatcher dispatcher, State state)
+    private PhotinoSynchronizationContext(IPhotinoUiDispatcher dispatcher, State state)
     {
         ArgumentNullException.ThrowIfNull(dispatcher);
         ArgumentNullException.ThrowIfNull(state);
@@ -186,7 +194,7 @@ internal sealed class PhotinoSynchronizationContext : SynchronizationContext
         // Using Wait here is ok because the antecedent task will never throw.
         antecedent.Wait();
 
-        ExecuteSynchronously(completion, d, state);
+        ExecuteSynchronously(completion, d, state, CaptureExecutionContextForDispatch(), runsOnCallerContext: true);
     }
 
     // shallow copy
@@ -214,7 +222,14 @@ internal sealed class PhotinoSynchronizationContext : SynchronizationContext
             _state.Task = completion.Task;
         }
 
-        ExecuteSynchronously(completion, d, state);
+        ExecuteSynchronously(completion, d, state, CaptureExecutionContextForDispatch(), runsOnCallerContext: true);
+    }
+
+    // The caller's context only needs to be carried along when the callback is marshalled to the
+    // dispatcher thread; on the dispatcher thread itself it is already current.
+    private ExecutionContext? CaptureExecutionContextForDispatch()
+    {
+        return _dispatcher.CheckAccess() ? null : ExecutionContext.Capture();
     }
 
     private Task Enqueue(Task antecedent, SendOrPostCallback d, object? state, bool forceAsync = false)
@@ -242,26 +257,38 @@ internal sealed class PhotinoSynchronizationContext : SynchronizationContext
         ), CancellationToken.None, flags, TaskScheduler.Default);
     }
 
-    private void ExecuteSynchronously(TaskCompletionSource? completion, SendOrPostCallback callback, object? state)
+    // executionContext is applied on the thread that runs the callback. runsOnCallerContext indicates that
+    // the current thread already runs in that context, so it is not reapplied when dispatch is unavailable.
+    private void ExecuteSynchronously(
+        TaskCompletionSource? completion,
+        SendOrPostCallback callback,
+        object? state,
+        ExecutionContext? executionContext,
+        bool runsOnCallerContext)
     {
-        var execution = (
-            Context: this,
-            Completion: completion,
-            Callback: callback,
-            State: state);
+        var execution = new Execution(this, completion, callback, state, executionContext);
 
         // Anything run on the sync context should be dispatched through Photino when
         // dispatch is available, so native window/WebView access stays on the dispatcher thread.
-        if (!_dispatcher.TryInvoke(static execution =>
-            {
-                execution.Context.ExecuteSynchronouslyCore(execution.Completion, execution.Callback, execution.State);
-            }, execution))
-        {
-            ExecuteSynchronouslyCore(completion, callback, state);
-        }
+        if (_dispatcher.TryInvoke(static execution => execution.Context.ExecuteSynchronouslyCore(execution), execution))
+            return;
+
+        ExecuteSynchronouslyCore(runsOnCallerContext ? execution with { ExecutionContext = null } : execution);
     }
 
-    private void ExecuteSynchronouslyCore(TaskCompletionSource? completion, SendOrPostCallback callback, object? state)
+    private void ExecuteSynchronouslyCore(Execution execution)
+    {
+        if (execution.ExecutionContext is null)
+        {
+            ExecuteCallback(execution.Completion, execution.Callback, execution.State);
+            return;
+        }
+
+        // Perf - using a static thunk here to avoid a delegate allocation.
+        ExecutionContext.Run(execution.ExecutionContext, s_executionContextThunk, execution);
+    }
+
+    private void ExecuteCallback(TaskCompletionSource? completion, SendOrPostCallback callback, object? state)
     {
         var original = Current;
         try
@@ -285,24 +312,11 @@ internal sealed class PhotinoSynchronizationContext : SynchronizationContext
 
     private void ExecuteBackground(WorkItem item)
     {
-        if (item.ExecutionContext == null)
-        {
-            try
-            {
-                ExecuteSynchronously(null, item.Callback, item.State);
-            }
-            catch (Exception ex)
-            {
-                DispatchException(ex);
-            }
-
-            return;
-        }
-
-        // Perf - using a static thunk here to avoid a delegate allocation.
         try
         {
-            ExecutionContext.Run(item.ExecutionContext, s_executionContextThunk, item);
+            // The captured context is applied where the callback runs (usually the dispatcher thread),
+            // not on the thread-pool thread that forwards the work item.
+            ExecuteSynchronously(null, item.Callback, item.State, item.ExecutionContext, runsOnCallerContext: false);
         }
         catch (Exception ex)
         {
@@ -367,6 +381,13 @@ internal sealed class PhotinoSynchronizationContext : SynchronizationContext
             return $"{{ Busy: {IsBusy}, Pending Task: {Task} }}";
         }
     }
+
+    private readonly record struct Execution(
+        PhotinoSynchronizationContext Context,
+        TaskCompletionSource? Completion,
+        SendOrPostCallback Callback,
+        object? State,
+        ExecutionContext? ExecutionContext);
 
     private record WorkItem(
         PhotinoSynchronizationContext SynchronizationContext,
