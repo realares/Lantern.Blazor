@@ -114,9 +114,68 @@ public sealed class PhotinoSynchronizationContextTests
     }
 
     [TestMethod]
-    public async Task Post_FlowsExecutionContextToDispatcherThread()
+    public async Task Post_WhenDispatcherCanPost_RunsInOrderWithoutBlockingInvoke()
     {
-        using var dispatcher = new TestUiDispatcher();
+        using var dispatcher = new TestUiDispatcher { CanPost = true };
+        var context = new PhotinoSynchronizationContext(dispatcher);
+        var executed = new List<(int Index, int ThreadId)>();
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        const int count = 50;
+
+        for (var i = 0; i < count; i++)
+        {
+            var index = i;
+            context.Post(_ =>
+            {
+                executed.Add((index, Environment.CurrentManagedThreadId));
+                if (index == count - 1)
+                    done.SetResult();
+            }, null);
+        }
+
+        await done.Task.WaitAsync(s_timeout);
+
+        CollectionAssert.AreEqual(Enumerable.Range(0, count).ToArray(), executed.Select(item => item.Index).ToArray());
+        Assert.IsTrue(executed.All(item => item.ThreadId == dispatcher.ThreadId));
+        Assert.AreEqual(0, dispatcher.MarshalledInvokeCount);
+    }
+
+    [TestMethod]
+    public async Task Post_DroppedByStoppedMessageLoop_IsRecoveredByLaterWork()
+    {
+        using var dispatcher = new TestUiDispatcher { CanPost = true, DropPosts = true };
+        var context = new PhotinoSynchronizationContext(dispatcher);
+        var executed = new List<string>();
+
+        context.Post(_ => executed.Add("posted"), null);
+
+        // The message loop exits; the posted item was accepted but never runs on the UI thread.
+        dispatcher.CanPost = false;
+        dispatcher.IsRunning = false;
+
+        await context.InvokeAsync(() => executed.Add("after shutdown")).WaitAsync(s_timeout);
+
+        CollectionAssert.AreEqual(new[] { "posted", "after shutdown" }, executed);
+    }
+
+    [TestMethod]
+    public async Task Post_HidesDispatcherSchedulerFromCallback()
+    {
+        using var dispatcher = new TestUiDispatcher { CanPost = true };
+        var context = new PhotinoSynchronizationContext(dispatcher);
+        var observed = new TaskCompletionSource<TaskScheduler>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        context.Post(_ => observed.SetResult(TaskScheduler.Current), null);
+
+        Assert.AreSame(TaskScheduler.Default, await observed.Task.WaitAsync(s_timeout));
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Post_FlowsExecutionContextToDispatcherThread(bool canPost)
+    {
+        using var dispatcher = new TestUiDispatcher { CanPost = canPost };
         var context = new PhotinoSynchronizationContext(dispatcher);
         var asyncLocal = new AsyncLocal<string?> { Value = "posted" };
         var observed = new TaskCompletionSource<(string? Value, int ThreadId)>(TaskCreationOptions.RunContinuationsAsynchronously);

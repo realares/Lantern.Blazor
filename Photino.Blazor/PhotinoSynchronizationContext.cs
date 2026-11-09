@@ -14,6 +14,9 @@ namespace Photino.Blazor;
 //
 // The Photino dispatcher marshals natively and does not flow ExecutionContext, so the captured
 // context is applied on the thread that finally runs the callback.
+//
+// Queued work items are scheduled with PhotinoDispatcherTaskScheduler: while the message loop runs they
+// are posted straight to the dispatcher thread; otherwise they go through the thread pool.
 internal sealed class PhotinoSynchronizationContext : SynchronizationContext
 {
     private static readonly ContextCallback s_executionContextThunk = static state =>
@@ -36,7 +39,7 @@ internal sealed class PhotinoSynchronizationContext : SynchronizationContext
     }
 
     internal PhotinoSynchronizationContext(IPhotinoUiDispatcher dispatcher)
-        : this(dispatcher, new State())
+        : this(dispatcher, new State(dispatcher))
     {
     }
 
@@ -174,6 +177,8 @@ internal sealed class PhotinoSynchronizationContext : SynchronizationContext
         {
             _state.Task = Enqueue(_state.Task, d, state, forceAsync: true);
         }
+
+        _state.Scheduler.RecoverDroppedTasks();
     }
 
     // Runs the callback synchronously.
@@ -187,6 +192,9 @@ internal sealed class PhotinoSynchronizationContext : SynchronizationContext
             antecedent = _state.Task;
             _state.Task = completion.Task;
         }
+
+        // A queued item dropped by a stopped message loop would otherwise never complete the antecedent.
+        _state.Scheduler.RecoverDroppedTasks();
 
         // We have to block. That's the contract of Send - we don't expect this to be used
         // in many scenarios in Components.
@@ -207,19 +215,28 @@ internal sealed class PhotinoSynchronizationContext : SynchronizationContext
     // after the current operation.
     private void ExecuteSynchronouslyIfPossible(SendOrPostCallback d, object? state)
     {
-        TaskCompletionSource completion;
+        TaskCompletionSource? completion = null;
 
         lock (_state.Lock)
         {
-            if (!_state.Task.IsCompleted)
+            if (_state.Task.IsCompleted)
+            {
+                // We can execute this synchronously because nothing is currently running or queued.
+                completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                _state.Task = completion.Task;
+            }
+            else
             {
                 _state.Task = Enqueue(_state.Task, d, state);
-                return;
             }
+        }
 
-            // We can execute this synchronously because nothing is currently running or queued.
-            completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            _state.Task = completion.Task;
+        if (completion is null)
+        {
+            // Work queued during shutdown (for example renderer disposal) must not wait behind
+            // an item that the stopped message loop dropped.
+            _state.Scheduler.RecoverDroppedTasks();
+            return;
         }
 
         ExecuteSynchronously(completion, d, state, CaptureExecutionContextForDispatch(), runsOnCallerContext: true);
@@ -236,9 +253,12 @@ internal sealed class PhotinoSynchronizationContext : SynchronizationContext
     {
         // If we get here, it means that a callback is being explicitly queued. Let's instead add it to the queue and yield.
         //
-        // We use our own queue here to maintain the execution order of the callbacks scheduled here. Also,
-        // we need a queue rather than just scheduling an item in the thread pool - those items would immediately
-        // block and hurt scalability.
+        // We use our own queue (a chain of continuations) to maintain the execution order of the callbacks
+        // scheduled here. While the message loop runs, the scheduler posts each item directly to the dispatcher
+        // thread, so no thread-pool thread is blocked waiting for the UI thread.
+        //
+        // HideScheduler keeps TaskScheduler.Current at Default inside component code, so Task.Factory.StartNew
+        // and ContinueWith without an explicit scheduler do not end up on the UI thread.
         //
         // We need to capture the execution context so we can restore it later. This code is similar to
         // the call path of ThreadPool.QueueUserWorkItem and System.Threading.QueueUserWorkItemCallback.
@@ -248,13 +268,16 @@ internal sealed class PhotinoSynchronizationContext : SynchronizationContext
             executionContext = ExecutionContext.Capture();
         }
 
-        var flags = forceAsync ? TaskContinuationOptions.RunContinuationsAsynchronously : TaskContinuationOptions.None;
+        var flags = TaskContinuationOptions.HideScheduler;
+        if (forceAsync)
+            flags |= TaskContinuationOptions.RunContinuationsAsynchronously;
+
         return antecedent.ContinueWith(s_backgroundWorkThunk, new WorkItem(
             SynchronizationContext: this,
             ExecutionContext: executionContext,
             Callback: d,
             State: state
-        ), CancellationToken.None, flags, TaskScheduler.Default);
+        ), CancellationToken.None, flags, _state.Scheduler);
     }
 
     // executionContext is applied on the thread that runs the callback. runsOnCallerContext indicates that
@@ -365,8 +388,10 @@ internal sealed class PhotinoSynchronizationContext : SynchronizationContext
         UnhandledException?.Invoke(this, new UnhandledExceptionEventArgs(ex, isTerminating: false));
     }
 
-    private sealed class State
+    private sealed class State(IPhotinoUiDispatcher dispatcher)
     {
+        // Shared by copies of the context, like the queue itself.
+        public readonly PhotinoDispatcherTaskScheduler Scheduler = new(dispatcher);
         internal int BusyCount;
         private bool IsBusy => Volatile.Read(ref BusyCount) > 0; // Just for debugging
 #if NET9_0_OR_GREATER

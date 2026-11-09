@@ -164,7 +164,7 @@ public sealed partial class PhotinoBlazorApp : IDisposable, IAsyncDisposable
             ? new RootComponentsCollection()
             : new RootComponentsCollection(jsComponents);
 
-        var synchronizationContext = new PhotinoSynchronizationContext(Dispatcher);
+        var synchronizationContext = new PhotinoSynchronizationContext(new PhotinoUiDispatcher(Dispatcher, Application));
         var dispatcher = new PhotinoBlazorDispatcher(synchronizationContext);
 
         var resourceHandler = new PhotinoWindowResourceHandler();
