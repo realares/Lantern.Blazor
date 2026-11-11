@@ -585,7 +585,7 @@ dotnet add package Lantern.Blazor
 ```
 
 `Lantern.Blazor` depends on `PhotinoX.App`, which depends on `PhotinoX`. Platform-specific native binaries are provided by the PhotinoX runtime packages.
-> Package targets **net8.0; net9.0; net10.0**.
+> Package targets **net8.0; net9.0; net10.0; net11.0**.
 
 ## Samples
 
@@ -593,8 +593,8 @@ dotnet add package Lantern.Blazor
 
 ## Requirements
 
-- **.NET 10 SDK** (build)
-- **Target frameworks:** `net8.0; net9.0; net10.0`
+- **.NET 10 & 11 SDK** (build)
+- **Target frameworks:** `net8.0; net9.0; net10.0; net11.0`
 - Runtime deps: see [**PhotinoX.Native**](https://www.nuget.org/packages/PhotinoX.Native) (`runtimes/<rid>/native/`)
 - **Windows:** Microsoft Edge WebView2 Runtime  
   https://learn.microsoft.com/microsoft-edge/webview2/
