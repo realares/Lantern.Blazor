@@ -323,8 +323,12 @@ public sealed partial class PhotinoBlazorWindow : IPhotinoWebResourceHandler, IP
             ? ParameterView.Empty
             : ParameterView.FromDictionary(component.Parameters);
 
-        await WebViewManager.AddRootComponentAsync(component.ComponentType, component.Selector, parameters);
+        // Record the selector before awaiting: on a running page the await lasts until the component's
+        // initial render is quiescent (e.g. OnInitializedAsync), and a removal that arrives in the meantime
+        // must find the selector. The WebView manager registers the selector before it renders, so the
+        // component stays registered (and removable) even when that render fails.
         _attachedSelectors.Add(component.Selector);
+        await WebViewManager.AddRootComponentAsync(component.ComponentType, component.Selector, parameters);
     }
 
     private void TrackRootComponentChanges()
