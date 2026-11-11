@@ -192,7 +192,7 @@ public sealed partial class PhotinoBlazorApp : IDisposable, IAsyncDisposable
         }
         catch
         {
-            // The window is not tracked yet, so release its service scope and message pumps here.
+            // The window is not tracked yet, so release its service scope and message pump here.
             CleanUpFailedWindow(window, blazorWindow, webViewManager, windowServices);
             throw;
         }

@@ -12,13 +12,9 @@ namespace Photino.Blazor;
 
 internal sealed partial class PhotinoWebViewManager : WebViewManager
 {
-    private readonly record struct IncomingWebMessage(string Message, Uri Uri);
-
     private readonly PhotinoWindow _window;
     private readonly Channel<string> _outgoingMessages;
-    private readonly Channel<IncomingWebMessage> _incomingMessages;
     private readonly Task _outgoingMessagesTask;
-    private readonly Task _incomingMessagesTask;
     private readonly CancellationTokenSource _cts = new();
     private readonly CancellationToken _cancellationToken;
     private int _messagePumpsStopped;
@@ -50,20 +46,12 @@ internal sealed partial class PhotinoWebViewManager : WebViewManager
             AllowSynchronousContinuations = false
         });
 
-        _incomingMessages = Channel.CreateUnbounded<IncomingWebMessage>(new UnboundedChannelOptions
-        {
-            SingleReader = true,
-            SingleWriter = false,
-            AllowSynchronousContinuations = false
-        });
-
         _window.WebMessageReceived += WebMessageReceived;
         _window.Closed += WindowClosed;
 
         _cancellationToken = _cts.Token;
 
         _outgoingMessagesTask = Task.Run(() => ProcessOutgoingMessagesAsync(_cancellationToken), _cancellationToken);
-        _incomingMessagesTask = Task.Run(ProcessIncomingMessagesAsync);
     }
 
     internal Uri AppOriginUri { get; }
@@ -135,8 +123,21 @@ internal sealed partial class PhotinoWebViewManager : WebViewManager
         if (AreMessagePumpsStopped)
             return;
 
-        if (!_incomingMessages.Writer.TryWrite(new IncomingWebMessage(e.Message, e.Uri)) && !AreMessagePumpsStopped)
-            Log("Failed to enqueue incoming WebView message because the message pump is closed.");
+        // Hand the message to Blazor right here instead of through a queue and a thread-pool thread.
+        // MessageReceived dispatches through the Blazor dispatcher: on the dispatcher thread an idle
+        // synchronization context runs the work inline, and a busy one queues it in arrival order.
+        // A queue in between cost two thread switches per message and blocked a pool thread while
+        // it marshalled the work back to the dispatcher thread.
+        try
+        {
+            // The native layer provides the top-level WebView URI for the message.
+            // This is used as the message source for Blazor WebView dispatching.
+            MessageReceived(e.Uri, e.Message);
+        }
+        catch (Exception ex)
+        {
+            Log($"Error processing message from WebView: {ex}");
+        }
     }
 
     private void WindowClosed(object? sender, EventArgs e)
@@ -181,33 +182,6 @@ internal sealed partial class PhotinoWebViewManager : WebViewManager
         }
     }
 
-    private async Task ProcessIncomingMessagesAsync()
-    {
-        var reader = _incomingMessages.Reader;
-
-        // No cancellation token: StopAcceptingMessages completes the channel, which ends this loop.
-        // Waiting with the token raced with shutdown, because a canceled token is observed before completion.
-        while (await reader.WaitToReadAsync().ConfigureAwait(false))
-        {
-            while (reader.TryRead(out var message))
-            {
-                if (AreMessagePumpsStopped)
-                    return;
-
-                try
-                {
-                    // The native layer provides the top-level WebView URI for the message.
-                    // This is used as the message source for Blazor WebView dispatching.
-                    MessageReceived(message.Uri, message.Message);
-                }
-                catch (Exception ex)
-                {
-                    Log($"Error processing message from WebView: {ex}");
-                }
-            }
-        }
-    }
-
     private void StopAcceptingMessages()
     {
         if (Interlocked.Exchange(ref _messagePumpsStopped, 1) != 0)
@@ -216,9 +190,8 @@ internal sealed partial class PhotinoWebViewManager : WebViewManager
         _window.WebMessageReceived -= WebMessageReceived;
         _window.Closed -= WindowClosed;
 
-        // Stop accepting new messages and wake the message pumps.
+        // Stop accepting new messages and wake the message pump.
         _outgoingMessages.Writer.TryComplete();
-        _incomingMessages.Writer.TryComplete();
 
         // Cancel after completion to keep pump shutdown orderly.
         try
@@ -252,14 +225,14 @@ internal sealed partial class PhotinoWebViewManager : WebViewManager
 
         try
         {
-            await Task.WhenAll(_outgoingMessagesTask, _incomingMessagesTask).ConfigureAwait(false);
+            await _outgoingMessagesTask.ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
         }
         catch (Exception ex)
         {
-            Log($"Error stopping message pumps: {ex}");
+            Log($"Error stopping message pump: {ex}");
         }
         finally
         {
