@@ -1,38 +1,37 @@
-[![PhotinoX Logo](https://raw.githubusercontent.com/ivanvoyager/PhotinoX/refs/heads/master/assets/photinox-logo.png)](https://github.com/ivanvoyager/PhotinoX)
+# Lantern.Blazor
 
-# PhotinoX.Blazor
-
-[![NuGet Version](https://img.shields.io/nuget/v/PhotinoX.Blazor.svg)](https://www.nuget.org/packages/PhotinoX.Blazor)
-[![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue)](https://deepwiki.com/ivanvoyager/PhotinoX.Blazor)
-[![Build](https://github.com/ivanvoyager/PhotinoX.Blazor/actions/workflows/build.yml/badge.svg)](https://github.com/ivanvoyager/PhotinoX.Blazor/actions/workflows/build.yml)
-[![License](https://img.shields.io/github/license/ivanvoyager/PhotinoX.Blazor?label=license)](https://github.com/ivanvoyager/PhotinoX.Blazor/blob/master/LICENSE)
-[![NuGet Downloads](https://img.shields.io/nuget/dt/PhotinoX.Blazor.svg)](https://www.nuget.org/packages/PhotinoX.Blazor)
+[![NuGet Version](https://img.shields.io/nuget/v/Lantern.Blazor.svg)](https://www.nuget.org/packages/Lantern.Blazor)
+[![Build](https://github.com/realares/Lantern.Blazor/actions/workflows/build.yml/badge.svg)](https://github.com/realares/Lantern.Blazor/actions/workflows/build.yml)
+[![License](https://img.shields.io/github/license/realares/Lantern.Blazor?label=license)](https://github.com/realares/Lantern.Blazor/blob/master/LICENSE)
+[![NuGet Downloads](https://img.shields.io/nuget/dt/Lantern.Blazor.svg)](https://www.nuget.org/packages/Lantern.Blazor)
 
 Blazor integration for [**PhotinoX**](https://github.com/ivanvoyager/PhotinoX) desktop applications.
 
-`PhotinoX.Blazor` extends the application model provided by [PhotinoX.App](https://github.com/ivanvoyager/PhotinoX.App) with support for running Blazor applications in native Photino windows, including root components, static web resources, URL loading policies, and multiple Blazor windows.
+`Lantern.Blazor` extends the application model provided by [PhotinoX.App](https://github.com/ivanvoyager/PhotinoX.App) with support for running Blazor applications in native Photino windows, including root components, static web resources, URL loading policies, and multiple Blazor windows.
 
 - **Windows:** WebView2
 - **macOS:** WKWebView
 - **Linux:** WebKitGTK 4.1
 
-`PhotinoX.Blazor` is an independent fork of [tryphotino/photino.Blazor](https://github.com/tryphotino/photino.Blazor) under the Apache-2.0 license and is **not affiliated** with the original project or organization.
+`Lantern.Blazor` is an independent fork of [ivanvoyager/PhotinoX.Blazor](https://github.com/ivanvoyager/PhotinoX.Blazor), which itself is a fork of [tryphotino/photino.Blazor](https://github.com/tryphotino/photino.Blazor). It is distributed under the Apache-2.0 license and is **not affiliated** with either project or its organization.
+
+`Lantern.Blazor` keeps the `Photino.Blazor` namespace and public API, so switching from `PhotinoX.Blazor` only requires changing the package reference.
 
 ### Package architecture
 
-The PhotinoX packages form a layered application stack:
+`Lantern.Blazor` sits on top of the PhotinoX packages, which form a layered application stack:
 
 ```text
 PhotinoX.Native
 └── PhotinoX
     └── PhotinoX.App
-        └── PhotinoX.Blazor
+        └── Lantern.Blazor
 ```
 
 - `PhotinoX.Native` provides the native window and WebView runtime.
 - `PhotinoX` provides the managed application, dispatcher, window, and WebView APIs.
 - `PhotinoX.App` adds application composition, configuration, services, and lifetime management.
-- `PhotinoX.Blazor` builds on `PhotinoX.App` and adds Blazor-specific application and window hosting.
+- `Lantern.Blazor` builds on `PhotinoX.App` and adds Blazor-specific application and window hosting.
 
 `PhotinoBlazorApp` is a Blazor facade over `PhotinoApp`. Common application services, configuration, environment information, logging, application initialization, and disposal are provided by `PhotinoX.App`.
 
@@ -72,7 +71,7 @@ internal static class Program
         builder.ConfigureMainWindow(window =>
         {
             window
-                .SetTitle("My PhotinoX Blazor App")
+                .SetTitle("My Blazor App")
                 .SetSize(1200, 800);
         });
 
@@ -255,7 +254,7 @@ With defaults enabled, options can also be configured through the `PhotinoX:Blaz
 
 ## Static web resources
 
-By default, `PhotinoX.Blazor` creates a `PhysicalFileProvider` for `PhotinoEnvironment.WebRootPath`.
+By default, `Lantern.Blazor` creates a `PhysicalFileProvider` for `PhotinoEnvironment.WebRootPath`.
 
 Configure the web root through application options:
 
@@ -299,7 +298,7 @@ Root component parameters are also supported:
 ```csharp
 builder.RootComponents.Add<App>("#app", new Dictionary<string, object?>
 {
-    ["Title"] = "PhotinoX"
+    ["Title"] = "Lantern"
 });
 ```
 
@@ -313,7 +312,7 @@ Configure the main native window before its WebView is initialized:
 builder.ConfigureMainWindow(window =>
 {
     window
-        .SetTitle("PhotinoX Blazor App")
+        .SetTitle("Lantern.Blazor App")
         .SetSize(1400, 800)
         .SetDevToolsEnabled(true)
         .SetIconFile("favicon.ico");
@@ -357,7 +356,7 @@ builder.ConfigureApplication(application =>
 });
 ```
 
-`PhotinoX.Blazor` configures `OnMainWindowClose` as its default shutdown mode. User callbacks are applied afterward and can override that value.
+`Lantern.Blazor` configures `OnMainWindowClose` as its default shutdown mode. User callbacks are applied afterward and can override that value.
 
 ## Application lifetime
 
@@ -395,7 +394,7 @@ If a callback throws, subsequent callbacks are not invoked. Blazor windows and t
 
 ## Application and window model
 
-`PhotinoX.Blazor` separates application-level services from window-level Blazor hosting:
+`Lantern.Blazor` separates application-level services from window-level Blazor hosting:
 
 - `PhotinoBlazorApp` is the Blazor application facade over `PhotinoApp`.
 - `PhotinoBlazorWindow` represents one native `PhotinoWindow` hosting Blazor content.
@@ -492,7 +491,7 @@ For Blazor windows, relative startup URLs are passed to the Blazor WebView as ap
 
 ## Application scheme
 
-`PhotinoX.Blazor` uses the `app` custom scheme on Windows, macOS, and Linux:
+`Lantern.Blazor` uses the `app` custom scheme on Windows, macOS, and Linux:
 
 ```text
 app://localhost/
@@ -559,7 +558,7 @@ Secondary windows should be created and shown on the application UI thread. Use 
 
 ## Key differences from the upstream Photino.Blazor project
 
-| Area | Upstream Photino.Blazor | PhotinoX.Blazor |
+| Area | Upstream Photino.Blazor | Lantern.Blazor |
 |---|---|---|
 | Application model | Independent Blazor-specific application and service model | Blazor facade over `PhotinoX.App` |
 | Application composition | Blazor services configured independently | Uses `PhotinoAppBuilder`, DI, configuration, logging, environment, and application initialization |
@@ -582,15 +581,15 @@ Secondary windows should be created and shown on the application UI thread. Use 
 ## Install
 
 ```bash
-dotnet add package PhotinoX.Blazor
+dotnet add package Lantern.Blazor
 ```
 
-`PhotinoX.Blazor` depends on `PhotinoX.App`, which depends on `PhotinoX`. Platform-specific native binaries are provided by the PhotinoX runtime packages.
+`Lantern.Blazor` depends on `PhotinoX.App`, which depends on `PhotinoX`. Platform-specific native binaries are provided by the PhotinoX runtime packages.
 > Package targets **net8.0; net9.0; net10.0**.
 
 ## Samples
 
-- https://github.com/ivanvoyager/PhotinoX.Blazor/tree/master/Samples
+- https://github.com/realares/Lantern.Blazor/tree/master/Samples
 
 ## Requirements
 
@@ -607,22 +606,22 @@ dotnet add package PhotinoX.Blazor
 ## Build from source
 
 ```bash
-dotnet restore Photino.Blazor/PhotinoX.Blazor.csproj
-dotnet build   Photino.Blazor/PhotinoX.Blazor.csproj -c Release
-dotnet pack    Photino.Blazor/PhotinoX.Blazor.csproj -c Release -o artifacts
+dotnet restore Lantern.Blazor/Lantern.Blazor.csproj
+dotnet build   Lantern.Blazor/Lantern.Blazor.csproj -c Release
+dotnet pack    Lantern.Blazor/Lantern.Blazor.csproj -c Release -o artifacts
 ```
-> CI: see [`.github/workflows/build.yml`](https://github.com/ivanvoyager/PhotinoX.Blazor/blob/master/.github/workflows/build.yml) (build + pack + upload `.nupkg`/`.snupkg`).
+> CI: see [`.github/workflows/build.yml`](https://github.com/realares/Lantern.Blazor/blob/master/.github/workflows/build.yml) (build + pack + upload `.nupkg`/`.snupkg`).
 
 ## Contributing
 
-Issues and PRs are welcome. Keep PRs focused, minimal, and consistent with the rest of PhotinoX.
+Issues and PRs are welcome. Keep PRs focused, minimal, and consistent with the rest of the code base.
 
 ## Contributors
 
-<a href="https://github.com/ivanvoyager/PhotinoX.Blazor/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=ivanvoyager/PhotinoX.Blazor" />
+<a href="https://github.com/realares/Lantern.Blazor/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=realares/Lantern.Blazor" />
 </a>
 
 ## License
 
-PhotinoX.Blazor is licensed under **Apache-2.0**.
+Lantern.Blazor is licensed under **Apache-2.0**.

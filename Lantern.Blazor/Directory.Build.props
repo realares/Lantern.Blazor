@@ -4,17 +4,17 @@
 
   <!-- Package metadata -->
   <PropertyGroup>
-    <Authors>ivanvoyager, TryPhotino</Authors>
-    <Company>ivanvoyager</Company>
+    <Authors>Realares, ivanvoyager, TryPhotino</Authors>
+    <Company>Realares</Company>
     <Copyright>Copyright (c) $(Authors) $([System.DateTime]::Today.ToString(yyyy))</Copyright>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <IsPackable>true</IsPackable>
     <PackageIcon>logo.png</PackageIcon>
-    <PackageId>PhotinoX.Blazor</PackageId>
+    <PackageId>Lantern.Blazor</PackageId>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/ivanvoyager/PhotinoX.Blazor</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/realares/Lantern.Blazor</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageTags>blazor;native;webview;webview2;photino;photinox;desktop;cross-platform;fork;dotnet</PackageTags>
+    <PackageTags>blazor;native;webview;webview2;lantern;photino;photinox;desktop;cross-platform;fork;dotnet</PackageTags>
   </PropertyGroup>
 
   <!-- SourceLink -->

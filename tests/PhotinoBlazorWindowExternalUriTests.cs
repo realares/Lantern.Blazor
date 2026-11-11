@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Photino.Blazor;
 
-namespace PhotinoX.Blazor.Tests;
+namespace Lantern.Blazor.Tests;
 
 [TestClass]
 public sealed class PhotinoBlazorWindowExternalUriTests

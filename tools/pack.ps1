@@ -10,7 +10,7 @@ param(
     [string]$VersionSuffix = ""
 )
 
-$csproj = "$PSScriptRoot\..\Photino.Blazor\PhotinoX.Blazor.csproj"
+$csproj = "$PSScriptRoot\..\Lantern.Blazor\Lantern.Blazor.csproj"
 $Configuration = "Release"
 $outDir = $PSScriptRoot
 

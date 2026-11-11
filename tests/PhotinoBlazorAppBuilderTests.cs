@@ -4,7 +4,7 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Options;
 using Photino.Blazor;
 
-namespace PhotinoX.Blazor.Tests;
+namespace Lantern.Blazor.Tests;
 
 [TestClass]
 [DoNotParallelize]

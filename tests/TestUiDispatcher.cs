@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Runtime.ExceptionServices;
 using Photino.Blazor;
 
-namespace PhotinoX.Blazor.Tests;
+namespace Lantern.Blazor.Tests;
 
 // Emulates the Photino dispatcher: a dedicated UI thread that runs marshalled callbacks
 // without flowing the caller's ExecutionContext (like native dispatch).

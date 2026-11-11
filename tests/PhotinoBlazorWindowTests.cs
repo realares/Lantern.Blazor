@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.FileProviders;
 using Photino.Blazor;
 
-namespace PhotinoX.Blazor.Tests;
+namespace Lantern.Blazor.Tests;
 
 [TestClass]
 [DoNotParallelize]
@@ -23,7 +23,7 @@ public sealed class PhotinoBlazorWindowTests
     [ClassInitialize]
     public static void ClassInitialize(TestContext context)
     {
-        s_webRoot = Directory.CreateTempSubdirectory("photinox-blazor-tests-").FullName;
+        s_webRoot = Directory.CreateTempSubdirectory("lantern-blazor-tests-").FullName;
         File.WriteAllText(Path.Combine(s_webRoot, "index.html"), HostPageContent);
         File.WriteAllText(Path.Combine(s_webRoot, "data.json"), DataContent);
 

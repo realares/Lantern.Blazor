@@ -17,7 +17,7 @@ internal static class Program
         // Customize the native Photino window.
         app.MainWindow
             .SetIconFile("favicon.ico")
-            .SetTitle("PhotinoX Blazor Sample");
+            .SetTitle("Lantern.Blazor Sample");
 
         AppDomain.CurrentDomain.UnhandledException += (_, error) =>
         {

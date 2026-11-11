@@ -18,7 +18,7 @@ internal static class Program
             // Customize the native Photino window.
             window
                 .SetIconFile("favicon.ico")
-                .SetTitle("PhotinoX Hello World");
+                .SetTitle("Lantern.Blazor Hello World");
         });
 
         using var app = appBuilder.Build();

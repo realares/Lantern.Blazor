@@ -2,7 +2,7 @@
 set -euo pipefail
 
 scriptDir="$(cd "$(dirname "$0")" && pwd)"
-csproj="$scriptDir/../Photino.Blazor/PhotinoX.Blazor.csproj"
+csproj="$scriptDir/../Lantern.Blazor/Lantern.Blazor.csproj"
 configuration="Release"
 outDir="$scriptDir"
 

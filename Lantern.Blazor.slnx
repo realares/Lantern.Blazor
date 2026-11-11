@@ -11,6 +11,6 @@
     <File Path="Directory.Build.props" />
     <File Path="README.md" />
   </Folder>
-  <Project Path="Photino.Blazor/PhotinoX.Blazor.csproj" />
-  <Project Path="tests/PhotinoX.Blazor.Tests.csproj" />
+  <Project Path="Lantern.Blazor/Lantern.Blazor.csproj" />
+  <Project Path="tests/Lantern.Blazor.Tests.csproj" />
 </Solution>

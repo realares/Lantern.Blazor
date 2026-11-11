@@ -142,7 +142,7 @@ public sealed partial class PhotinoBlazorApp : IDisposable, IAsyncDisposable
         if (parent is null)
         {
             window
-                .SetTitle("PhotinoX.Blazor App")
+                .SetTitle("Lantern.Blazor App")
                 .SetWidth(1000)
                 .SetHeight(900)
                 .Center();

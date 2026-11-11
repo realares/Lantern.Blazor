@@ -5,8 +5,10 @@
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Description>Blazor integration for PhotinoX (.NET wrapper for OS-native WebView windows). 
-Maintained fork of Photino.Blazor.</Description>
+Maintained fork of PhotinoX.Blazor and Photino.Blazor.</Description>
 		<RootNamespace>Photino.Blazor</RootNamespace>
+		<!-- PhotinoX grants InternalsVisibleTo only to an assembly named PhotinoX.Blazor (e.g. PhotinoWindow.Log). -->
+		<AssemblyName>PhotinoX.Blazor</AssemblyName>
 		<VersionPrefix>5.4.1</VersionPrefix>
 	</PropertyGroup>
 

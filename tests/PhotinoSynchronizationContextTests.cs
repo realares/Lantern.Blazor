@@ -1,7 +1,7 @@
 ﻿using Photino.Blazor;
 using Photino.NET;
 
-namespace PhotinoX.Blazor.Tests;
+namespace Lantern.Blazor.Tests;
 
 [TestClass]
 public sealed class PhotinoSynchronizationContextTests

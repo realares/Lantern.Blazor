@@ -1,7 +1,7 @@
 using System.Net;
 using Photino.Blazor;
 
-namespace PhotinoX.Blazor.Tests;
+namespace Lantern.Blazor.Tests;
 
 [TestClass]
 public sealed class PhotinoHttpHandlerTests
