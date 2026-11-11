@@ -14,6 +14,8 @@
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/realares/Lantern.Blazor</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/realares/Lantern.Blazor.git</RepositoryUrl>
     <PackageTags>blazor;native;webview;webview2;lantern;photino;photinox;desktop;cross-platform;fork;dotnet</PackageTags>
   </PropertyGroup>
 
