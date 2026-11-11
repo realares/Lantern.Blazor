@@ -184,7 +184,10 @@ public sealed partial class PhotinoBlazorApp : IDisposable, IAsyncDisposable
                 rootComponents.JSComponents,
                 options);
 
-            blazorWindow = new PhotinoBlazorWindow(window, webViewManager, rootComponents, windowServices, options.Value);
+            blazorWindow = new PhotinoBlazorWindow(window, webViewManager, rootComponents, windowServices, options.Value)
+            {
+                SynchronizationContext = synchronizationContext
+            };
 
             resourceHandler.Handler = blazorWindow;
 
@@ -342,12 +345,34 @@ public sealed partial class PhotinoBlazorApp : IDisposable, IAsyncDisposable
         {
             var mainBlazorWindow = MainBlazorWindow;
             mainBlazorWindow.Start();
-            return _app.Run(mainBlazorWindow.Window);
+
+            try
+            {
+                return _app.Run(mainBlazorWindow.Window);
+            }
+            finally
+            {
+                OnMessageLoopExited();
+            }
         }
         finally
         {
             Volatile.Write(ref _isRunning, 0);
         }
+    }
+
+    // Photino drops callbacks that are still posted when the message loop exits. A window that is being
+    // disposed at that moment (closing the main window ends the loop) would wait for such a callback
+    // until the renderer disposal timeout, keeping the process alive for seconds after its window is gone.
+    private void OnMessageLoopExited()
+    {
+        PhotinoBlazorWindow[] windows;
+
+        lock (_blazorWindows)
+            windows = [.. _blazorWindows];
+
+        foreach (var window in windows)
+            window.SynchronizationContext?.NotifyMessageLoopExited();
     }
 
     /// <summary>

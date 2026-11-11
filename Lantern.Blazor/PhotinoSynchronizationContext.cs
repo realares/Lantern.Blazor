@@ -205,6 +205,13 @@ internal sealed class PhotinoSynchronizationContext : SynchronizationContext
         ExecuteSynchronously(completion, d, state, CaptureExecutionContextForDispatch(), runsOnCallerContext: true);
     }
 
+    // Called once the application's message loop has exited. Work that was posted to the loop and dropped
+    // is moved to the thread pool, and later work no longer goes through the dispatcher's post queue.
+    internal void NotifyMessageLoopExited()
+    {
+        _state.Scheduler.NotifyMessageLoopExited();
+    }
+
     // shallow copy
     public override SynchronizationContext CreateCopy()
     {

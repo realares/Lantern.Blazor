@@ -6,12 +6,16 @@ namespace Photino.Blazor;
 // Photino may drop posted callbacks without running them when the message loop exits. Tasks posted to
 // the dispatcher are therefore tracked until they start; RecoverDroppedTasks moves them to the thread pool
 // once posting is no longer possible. TaskScheduler.TryExecuteTask guarantees each task runs at most once.
+//
+// Nothing may be queued after a dropped task (the code awaiting it is exactly what stopped), so recovery
+// cannot rely on later work alone: NotifyMessageLoopExited recovers as soon as the message loop has exited.
 internal sealed class PhotinoDispatcherTaskScheduler : TaskScheduler
 {
     private readonly IPhotinoUiDispatcher _dispatcher;
     private readonly SendOrPostCallback _executeOnDispatcher;
     private readonly Action<Task> _executeOnThreadPool;
     private readonly HashSet<Task> _postedTasks = [];
+    private volatile bool _messageLoopExited;
 
     public PhotinoDispatcherTaskScheduler(IPhotinoUiDispatcher dispatcher)
     {
@@ -22,10 +26,20 @@ internal sealed class PhotinoDispatcherTaskScheduler : TaskScheduler
         _executeOnThreadPool = task => TryExecuteTask(task);
     }
 
+    private bool CanPost => !_messageLoopExited && _dispatcher.CanPost;
+
+    // The message loop has exited: nothing posted to it will run anymore. Stops posting for good
+    // and requeues what is still pending.
+    public void NotifyMessageLoopExited()
+    {
+        _messageLoopExited = true;
+        RecoverDroppedTasks();
+    }
+
     // Requeues tasks that were posted to a dispatcher that no longer processes posts.
     public void RecoverDroppedTasks()
     {
-        if (_dispatcher.CanPost)
+        if (CanPost)
             return;
 
         Task[] droppedTasks;
@@ -45,13 +59,19 @@ internal sealed class PhotinoDispatcherTaskScheduler : TaskScheduler
 
     protected override void QueueTask(Task task)
     {
-        if (_dispatcher.CanPost)
+        if (CanPost)
         {
             lock (_postedTasks)
                 _postedTasks.Add(task);
 
             if (_dispatcher.Post(_executeOnDispatcher, task))
+            {
+                // The loop may have exited between the check above and the post.
+                if (_messageLoopExited)
+                    RecoverDroppedTasks();
+
                 return;
+            }
 
             lock (_postedTasks)
                 _postedTasks.Remove(task);

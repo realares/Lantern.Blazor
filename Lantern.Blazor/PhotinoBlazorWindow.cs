@@ -60,6 +60,9 @@ public sealed partial class PhotinoBlazorWindow : IPhotinoWebResourceHandler, IP
 
     internal PhotinoWebViewManager WebViewManager { get; }
 
+    // The synchronization context behind the window's Blazor dispatcher.
+    internal PhotinoSynchronizationContext? SynchronizationContext { get; init; }
+
     /// <summary>
     /// Occurs before the Blazor WebView loads a top-level URL.
     /// </summary>

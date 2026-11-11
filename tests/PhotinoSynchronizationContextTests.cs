@@ -159,6 +159,39 @@ public sealed class PhotinoSynchronizationContextTests
     }
 
     [TestMethod]
+    public async Task Post_DroppedByStoppedMessageLoop_IsRecoveredWhenLoopExitIsNotified()
+    {
+        using var dispatcher = new TestUiDispatcher { CanPost = true, DropPosts = true };
+        var context = new PhotinoSynchronizationContext(dispatcher);
+        var posted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        context.Post(_ => posted.SetResult(), null);
+
+        // The message loop exits with the item still posted, and no further work is queued:
+        // the code waiting for the item is the only thing that would queue more.
+        dispatcher.IsRunning = false;
+        context.NotifyMessageLoopExited();
+
+        await posted.Task.WaitAsync(s_timeout);
+    }
+
+    [TestMethod]
+    public async Task Post_AfterLoopExitIsNotified_DoesNotUseDispatcherPostQueue()
+    {
+        // The dispatcher still reports that it accepts posts, but drops them.
+        using var dispatcher = new TestUiDispatcher { CanPost = true, DropPosts = true };
+        var context = new PhotinoSynchronizationContext(dispatcher);
+        var posted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        dispatcher.IsRunning = false;
+        context.NotifyMessageLoopExited();
+
+        context.Post(_ => posted.SetResult(), null);
+
+        await posted.Task.WaitAsync(s_timeout);
+    }
+
+    [TestMethod]
     public async Task Post_HidesDispatcherSchedulerFromCallback()
     {
         using var dispatcher = new TestUiDispatcher { CanPost = true };
