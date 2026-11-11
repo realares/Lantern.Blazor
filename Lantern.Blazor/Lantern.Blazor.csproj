@@ -8,7 +8,7 @@ Maintained fork of PhotinoX.Blazor and Photino.Blazor.</Description>
 		<RootNamespace>Photino.Blazor</RootNamespace>
 		<!-- PhotinoX grants InternalsVisibleTo only to an assembly named PhotinoX.Blazor (e.g. PhotinoWindow.Log). -->
 		<AssemblyName>PhotinoX.Blazor</AssemblyName>
-		<VersionPrefix>5.5.0</VersionPrefix>
+		<VersionPrefix>5.5.1</VersionPrefix>
 	</PropertyGroup>
 
 	<ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
