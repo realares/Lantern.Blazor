@@ -169,9 +169,13 @@ public sealed partial class PhotinoBlazorAppBuilder
 
             var state = app.Services.GetRequiredService<PhotinoBlazorAppState>();
             state.App = blazorApp;
-            blazorApp.SetBeforeDispose(_beforeDispose);
 
             blazorApp.Initialize(RootComponents, _configureMainWindow);
+
+            // Registered only after initialization succeeded: when Build fails, the application is disposed
+            // (which still disposes any window created so far), but the callbacks must not run against an
+            // application the caller never received.
+            blazorApp.SetBeforeDispose(_beforeDispose);
             return blazorApp;
         }
         catch
