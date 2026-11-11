@@ -281,9 +281,7 @@ public sealed partial class PhotinoBlazorApp : IDisposable, IAsyncDisposable
     /// <returns>A configured Photino Blazor window.</returns>
     public PhotinoBlazorWindow CreateWindow<TComponent>(string selector, IDictionary<string, object?>? parameters = null, string? configurationName = null, Action<PhotinoWindow>? configure = null) where TComponent : IComponent
     {
-        var window = CreateWindow(configurationName, configure);
-        window.RootComponents.Add<TComponent>(selector, parameters);
-        return window;
+        return CreateWindow(typeof(TComponent), selector, parameters, configurationName, configure);
     }
 
     /// <summary>
@@ -298,8 +296,21 @@ public sealed partial class PhotinoBlazorApp : IDisposable, IAsyncDisposable
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="componentType"/> is <see langword="null"/>.</exception>
     public PhotinoBlazorWindow CreateWindow(Type componentType, string selector, IDictionary<string, object?>? parameters = null, string? configurationName = null, Action<PhotinoWindow>? configure = null)
     {
+        // Validate before creating the window: a window created here is tracked until the application
+        // is disposed, and the caller would never receive it if the component turned out to be invalid.
+        ArgumentNullException.ThrowIfNull(componentType);
+
+        var component = new RootComponent
+        {
+            ComponentType = componentType,
+            Selector = selector,
+            Parameters = parameters is null ? null : new Dictionary<string, object?>(parameters)
+        };
+
+        component.Validate();
+
         var window = CreateWindow(configurationName, configure);
-        window.RootComponents.Add(componentType, selector, parameters);
+        window.RootComponents.Add(component);
         return window;
     }
 
